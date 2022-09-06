@@ -1,4 +1,4 @@
-# PHEWEB USER'S INPUTS VALIDATOR [version 0.1]
+# PHEWEB INPUTS VALIDATOR [version 0.1]
 
 
 Tool for validating users input files for uploading to the pheweb browser. 
