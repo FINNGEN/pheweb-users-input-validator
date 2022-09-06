@@ -1,7 +1,7 @@
-# PHEWEB INPUTS VALIDATOR [version 0.1]
+# PHEWEB INPUTS VALIDATOR
 
 
-Tool for validating users input files for uploading to the pheweb browser. 
+Python tool for validating users input files for uploading to the pheweb browser. 
 
 User needs to provide:
 + Metadata file in JSON format 
@@ -9,18 +9,17 @@ User needs to provide:
 
 There are two modes for scanning your stats file: deep and shallow. With the deep mode the whole file is scanned while with the shallow mode ~80k lines are subsampled from the stats file and subjected to the scan. 
 
-**Recommendation**: first run tool in a shallow mode to check whether your metadata is correctly formatted and check if some basic requirements for the stats file are met. Once that is checked - proceed to the deep check of the files.
+**Recommendation**: first run validator in a shallow mode to check whether your metadata is correctly formatted and check if some basic requirements for the stats file are met. Once that is checked - proceed to the deep check of the files.
 
 Expected runtimes:
 + Shallow scan: less than a minute
 + Deep scan: 700MB file is scanned, fixed and written in ~10-20 mins depending on the available resources.
 
 
-**Machine resource requirements**
-Validator uses multiprocessing python package and perfomes fastest when it is executed on the machine with multiple CPUs and good amount of memory, e.g. 4CPUs and memory 16GB.
+**Machine resource requirements**: validator uses multiprocessing python package and perfomes fastest when it is executed on the machine with multiple CPUs and good amount of memory, e.g. 4CPUs and memory 16GB.
 
 
-Guidelines for formatting your metadata and stats file can be found in Analyst Handbook: [](https://finngen.gitbook.io/finngen-analyst-handbook/working-in-the-sandbox/which-tools-are-available/untitled/how-to-set-up-a-pheweb-browser-for-summary-statistics). 
+Guidelines for formatting your metadata and stats file can be found in [FinnGen Analyst Handbook](https://finngen.gitbook.io/finngen-analyst-handbook/working-in-the-sandbox/which-tools-are-available/untitled/how-to-set-up-a-pheweb-browser-for-summary-statistics). 
 
 ## Requirements
 
