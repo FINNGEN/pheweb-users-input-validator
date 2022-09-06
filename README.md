@@ -94,38 +94,35 @@ Total execution time: 8.23 mins
 
 Report example of the **shallow scan** using example data specified in the Handbook:
 ```
-bash validator.sh -m metadata.json -s C3_COLORECTAL.gz -o out/ -d false -f false
-
-================= SCAN STARTED AT: 2022-09-06 06:57:48.757783 ==================
+================= SCAN STARTED AT: 2022-09-06 11:07:23.814803 ==================
 
 [INFO]  Check metadata file.
 [INFO]  Metadata file check completed.
 [INFO]  Check stats file.
 [INFO]  Start reading stats file in chunks.
-[WARN]  Last line of the stats file is not complete - it will be skipped.
 [INFO]  Start scanning stats file in chunks. This might take some time.
-[INFO]  Finished scanning stats file. 1.66 sec
-[INFO]  Finished writing stats file: 0.0 sec
+[INFO]  Finished scanning stats file. 1.64 sec
+[INFO]  No errors or fixes found - skip writing to a file.
 [INFO]  Stats file check completed.
 
 ================================================================================
 
 FILENAME             PASSED    FAILED    FIXED     REMAINING MD5SUM
 metadata.json        4/4       0         0         0         4b52275beb25f84fd010e570ee7de44d
-C3_COLORECTAL.gz     13/13     1         0         0         97d1ec64a91cbc4b5c277f2a2034fa5d
-Total                17/17     1         0         0         -         
+C3_COLORECTAL.gz     13/13     0         0         0         97d1ec64a91cbc4b5c277f2a2034fa5d
+Total                17/17     0         0         0         -         
 
 ================================================================================
 
 
 OUTPUT FILES:
-        ${DIROUT}/report.log
+	${DIROUT}/report.log
 
-SCAN ENDED AT: 2022-09-06 06:57:52.050323
+SCAN ENDED AT: 2022-09-06 11:07:27.121926
 
-Read stats file 1.66 sec
+Read stats file 1.64 sec
 Write stats file 0.0 sec
-Total 3.29 sec
+Total 3.31 sec
 
 
 ```

@@ -119,7 +119,7 @@ def check_stats(filename, deep, fix, outdir):
             write_stats(fout, data_fixed, num_cpus=0)    
             fout = os.path.abspath(fout)
         else:
-            print('[INFO]  No errors or fixes found - skip writing to a file.')
+            print('[INFO]  No errors or fixes found in stats file.')
             fout = None
     except Exception as e:
         print("Error occurred while writing output file :: %s. Skip fixing." % e)

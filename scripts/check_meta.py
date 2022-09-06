@@ -82,14 +82,17 @@ def check_meta(meta_filename, stats_filename, outdir, fix):
         message="""[PASS]  Metadata field "name" matches with summary stats file name."""
     report_dict.update({'filename': message})
 
+    w = len(re.findall("FAIL", str(report_dict))) + len(re.findall("FIXED", str(report_dict)))
+
     # save the mdata
-    if fix:
+    if fix and w > 0:
         report_dict['special_chars'] = re.sub('FAIL\]\ ', 'FIXED]', report_dict['special_chars'])
         fout = os.path.join(outdir, os.path.basename(meta_filename))
         fout = os.path.abspath(fout)
         with open(fout, 'w') as f:
             f.write(json.dumps(mdata, indent=2))
     else:
+        print("[INFO]  No errors or fixes found in metadata file.")
         fout = None
 
     report = '\n'.join([item[1] for item in report_dict.items()])
