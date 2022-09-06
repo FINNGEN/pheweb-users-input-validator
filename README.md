@@ -79,10 +79,6 @@ Total                17/17     0         0         0         -
 ================================================================================
 
 
-INPUT FILES:
-        /home/anastasia_shcherban/pheweb-users-input-validator/data/metadata.json
-        /home/anastasia_shcherban/pheweb-users-input-validator/data/C3_COLORECTAL.gz
-
 OUTPUT FILES:
 	${DIROUT}/scan05092022T1545/report.log
 	${DIROUT}/scan05092022T1545/metadata.json
@@ -121,10 +117,6 @@ Total                17/17     1         0         0         -
 
 ================================================================================
 
-
-INPUT FILES:
-        /home/anastasia_shcherban/pheweb-users-input-validator/data/metadata.json
-        /home/anastasia_shcherban/pheweb-users-input-validator/data/C3_COLORECTAL.gz
 
 OUTPUT FILES:
         ${DIROUT}/report.log
