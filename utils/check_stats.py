@@ -84,13 +84,14 @@ def check_stats(filename, deep, fix, outdir):
     # check the last line of the stat file
     if rest != '' and deep:
         message = "[WARN]  Last line of the stats file is not complete - it will be skipped."
+        print(message)
         report.update({'DOES_NOT_HAVE_COMPLETE_LAST_LINE': make_summary("DOES_NOT_HAVE_COMPLETE_LAST_LINE", None, None, (), ())})
 
     print("[INFO]  Start scanning stats file in chunks. This might take some time.")
-    
-    # process with pool
-    struct = [ (i, t, columns, delim) for i, t in enumerate(text_chunks)]
+
+    struct = [ (t, columns, delim) for i, t in enumerate(text_chunks)]
     with Pool() as pool:
+        # save fixed file to the output folder
         res = pool.map(multi_run_wrapper, struct)    
     
     # combine chunks and re-index results obtained during scan
@@ -134,6 +135,8 @@ def check_stats(filename, deep, fix, outdir):
 
 
 def combine_chunks(multithreads_res):
+
+    print("[INFO]  Combining %s scanned chunks." % len(multithreads_res))
     
     # re-enumerate the row ids
     ids = [r[1].shape[0] for r in multithreads_res]
@@ -190,7 +193,7 @@ def multi_run_wrapper(args):
    return r, d
 
 
-def chunk_scan(chunk_i, text, columns, delim):
+def chunk_scan(text, columns, delim):
 
     report = []
 
@@ -207,7 +210,7 @@ def chunk_scan(chunk_i, text, columns, delim):
     else:
         dat = pd.read_csv(io.StringIO(text), sep=delim, dtype={0: 'str'}, header=None, low_memory=False)
         dat.columns = columns
-
+    
     if len(entries) > 0:
         report.append({'col_id': None, 'colname': None,  'issue': 'SPECIAL_CHARACTERS', 
                        'status': 'FIXED', 'row_id': ids, 'invalid_entry': entries})

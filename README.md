@@ -46,10 +46,7 @@ Input arguments:
 
 ## Output
 
-The results of the scan are saved under <DIR_OUT>/scan<TIMESTAMP>/. Output files:
-- report1.log
-- report2.log
-- 
+The results of the scan are saved under <DIR_OUT>/scan<SCAN_TIMESTAMP>/report.log.
 
 ## Example
 

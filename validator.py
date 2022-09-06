@@ -8,8 +8,8 @@ import time
 import argparse
 import subprocess
 from datetime import datetime
-from check_meta import check_meta
-from check_stats import check_stats, timing
+from utils.check_meta import check_meta
+from utils.check_stats import check_stats, timing
 
 
 def main():
