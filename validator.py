@@ -109,7 +109,7 @@ def main():
     # tot_stats_checks = sum(sstats)
 
     # stats table header
-    chl = len(os.path.basename(stats)) + 5
+    chl = max([len(os.path.basename(stats)) + 5, len(os.path.basename(meta)) + 5])
     th = "FILENAME".ljust(chl) + "PASSED".ljust(10) + "FAILED".ljust(10) + \
         "FIXED".ljust(10)+ "REMAINING".ljust(10) + "MD5SUM"
     

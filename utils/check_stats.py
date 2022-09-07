@@ -65,8 +65,8 @@ def check_stats(filename, deep, fix, outdir):
 
             # append text from prev iteration
             text = rest + text
-
-            if not text.endswith('\n'):
+            tmp, last_line = text.rsplit('\n', 1)
+            if not text.endswith('\n') and len(last_line.split(delim)) != len(columns):
                 text, rest = text.rsplit('\n', 1)
             else: 
                 rest = ''
@@ -83,8 +83,7 @@ def check_stats(filename, deep, fix, outdir):
     
     # check the last line of the stat file
     if rest != '' and deep:
-        message = "[WARN]  Last line of the stats file is not complete - it will be skipped."
-        print(message)
+        print("[WARN]  Last line of the stats file is not complete - it will be skipped.")
         report.update({'DOES_NOT_HAVE_COMPLETE_LAST_LINE': make_summary("DOES_NOT_HAVE_COMPLETE_LAST_LINE", None, None, (), ())})
 
     print("[INFO]  Start scanning stats file in chunks. This might take some time.")
@@ -617,4 +616,6 @@ def chunk_df_for_writing(df, line_numb=None, step=None):
     start = v[list(range(0, len(v)-1))]
     end = v[list(range(1, len(v)))]
     return start, end
+
+
 

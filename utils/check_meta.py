@@ -2,6 +2,14 @@ import re
 import os
 import json
 
+def parse(filename):
+    try:
+        with open(filename) as f:
+            return json.load(f)
+    except ValueError as e:
+        print('[ERROR] Invalid json: %s :: %s' % (filename, e))
+        return None # or: raise
+
 def check_meta(meta_filename, stats_filename, outdir, fix):
 
     field_types = [ list, str, str, str, int, str, int, int, str, str, list, list, str ]
@@ -12,6 +20,14 @@ def check_meta(meta_filename, stats_filename, outdir, fix):
     
     # create report dictionary
     report_dict = {}
+
+    # 0. check if meta is a valid json file
+    if parse(meta_filename) is None:
+        # write to a report
+        message = "[FAIL]  Metadata file is not a valid JSON file. Terminate meta scan."
+        return message, None
+    else:
+        message = "[PASS]  Metadata file is not a valid JSON file."
 
     # 1. check if file contains non-ASCII characters
     message = ''
@@ -98,3 +114,4 @@ def check_meta(meta_filename, stats_filename, outdir, fix):
     report = '\n'.join([item[1] for item in report_dict.items()])
 
     return report, fout
+
