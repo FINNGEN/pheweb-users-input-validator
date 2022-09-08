@@ -65,8 +65,7 @@ def check_stats(filename, deep, fix, outdir):
 
             # append text from prev iteration
             text = rest + text
-            tmp, last_line = text.rsplit('\n', 1)
-            if not text.endswith('\n') and len(last_line.split(delim)) != len(columns):
+            if not text.endswith('\n'):
                 text, rest = text.rsplit('\n', 1)
             else: 
                 rest = ''
