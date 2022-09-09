@@ -5,6 +5,7 @@ __pycache__/
 
 # dependencies
 /data/*
+/venv/
 /.pnp
 /.pyc
 .pnp.js

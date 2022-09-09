@@ -2,10 +2,11 @@ import io
 import os
 import re
 import time
-from uuid import RFC_4122
 import xopen
 import mgzip
 import pysam
+import platform
+import subprocess
 import numpy as np
 import pandas as pd
 from multiprocessing import Pool
@@ -65,13 +66,13 @@ def check_stats(filename, deep, fix, outdir):
 
             # append text from prev iteration
             text = rest + text
-            tmp, last_line = text.rsplit('\n', 1)
-            if not text.endswith('\n') and len(last_line.split(delim)) != len(columns):
+            if not text.endswith('\n'):
                 text, rest = text.rsplit('\n', 1)
             else: 
                 rest = ''
             
             # scan and prefix the chunk
+            # print("\tChunk: %s" % chunk)
             text_chunks.append(text)
             
             # increase chunk count
@@ -84,53 +85,66 @@ def check_stats(filename, deep, fix, outdir):
     # check the last line of the stat file
     if rest != '' and deep:
         print("[WARN]  Last line of the stats file is not complete - it will be skipped.")
-        report.update({'DOES_NOT_HAVE_COMPLETE_LAST_LINE': make_summary("DOES_NOT_HAVE_COMPLETE_LAST_LINE", None, None, (), ())})
+        report.update({'DOES_NOT_HAVE_COMPLETE_LAST_LINE': 
+            make_summary("DOES_NOT_HAVE_COMPLETE_LAST_LINE", None, None, (), ())})
 
+    # scan chunks
     print("[INFO]  Start scanning stats file in chunks. This might take some time.")
-
     struct = [ (t, columns, delim) for i, t in enumerate(text_chunks)]
     with Pool() as pool:
-        # save fixed file to the output folder
         res = pool.map(multi_run_wrapper, struct)    
+
+    # fix the chunks
+    struct = [ (t[0], t[1], fix) for i, t in enumerate(res)]
+    with Pool() as pool:
+        res_fixed = pool.map(multi_run_wrapper_fix, struct)
     
-    # combine chunks and re-index results obtained during scan
-    report_add, data = combine_chunks(res)
+    # combine the reports
+    report_add = combine_chunks(res_fixed)
     report.update(report_add)
-    
+
     # print execution time
     t2 = time.time()
     t_read = timing(t1, t2)
     print("[INFO]  Finished scanning stats file. %s"  % t_read)
 
     # create report and fix if needed
-    data_fixed, r1, r2 = create_report_and_fix(data, report, fix) 
+    summary = summarize(res_fixed)
+    gr, dr = create_report(report, summary)
 
-    w = len(re.findall("FAIL", r1)) + len(re.findall("FIXED", r1))
+    # create a list of chhunk data frames
+    data_fixed = [ch[1] for ch in res_fixed]
 
     # write result file
     t1 = time.time()
     try:
         # save fixed file to the output folder
         fout = os.path.join(outdir, os.path.basename(filename))
-        if not deep:
-            fout = fout + '.CHUNK.gz'
-        # write file
-        if fix and w > 0:
+        fout = fout + '.CHUNK.gz' if not deep else fout
+        # write file if some fixes were made
+        if fix and summary['fixed'].sum() > 0:
             write_stats(fout, data_fixed, num_cpus=0)    
-            fout = os.path.abspath(fout)
+            fout_path = os.path.abspath(fout)
         else:
             print('[INFO]  No errors or fixes found in stats file.')
-            fout = None
+            fout_path = None
     except Exception as e:
         print("Error occurred while writing output file :: %s. Skip fixing." % e)
-    
-    # time
     t2 = time.time()
     t_write = timing(t1, t2)
-    if fix and w > 0:
-        print("[INFO]  Finished writing stats file: %s"  % t_write)
+    print("[INFO]  Finished writing stats file: %s"  % t_write)
+    
+    # try sorting the data if unsorted contigs found
+    t1 = time.time()
+    if summary.loc['unsorted', 'fail'] > 0:
+        print("[INFO]  Unsorted contigs found in the data - fixing the data.")
+        gr = sort_data(fout_path, gr)
+    
+    t2 = time.time()
+    t_sort = timing(t1, t2)
+    print("[INFO]  Finished sorting stats file: %s"  % t_write)
 
-    return r1, r2, t_read, t_write, fout
+    return gr, dr, t_read, t_write, t_sort, fout_path
 
 
 def combine_chunks(multithreads_res):
@@ -143,7 +157,7 @@ def combine_chunks(multithreads_res):
     pandas_id.pop()
     offset = [2] + list(np.cumsum(ids) + 2)
     offset.pop()
-    
+
     # combine report from chunks
     report_combined = []
     issues = []
@@ -179,12 +193,7 @@ def combine_chunks(multithreads_res):
             report_final[key]['row_id'] = report_final[key]['row_id'] + item['row_id']
             report_final[key]['pandas_row_id'] = report_final[key]['pandas_row_id'] + item['pandas_row_id']
 
-    # combine data:
-    data = pd.DataFrame()
-    for i in list(range(len(multithreads_res))):
-        data = data.append(multithreads_res[i][1])
-    
-    return report_final, data
+    return report_final
 
 
 def multi_run_wrapper(args):
@@ -192,16 +201,27 @@ def multi_run_wrapper(args):
    return r, d
 
 
+def multi_run_wrapper_fix(args):
+   r, d, f = chunk_fix(*args)
+   return r, d, f
+
+
 def chunk_scan(text, columns, delim):
 
     report = []
 
     # special chars
+    if '#chrom' in text[0:15]:
+        first_line, text = text.split('\n', 1)
+    else: 
+        first_line = ''
     entries, ids = scan_special_chars(text)
     for sp in entries:
         text = text.replace(sp, '')
-        if 'chrom' in text[0:15] and sp == '#':
-            text = text.replace('chrom', '#chrom')
+    
+    # append the line back if it was a header
+    if first_line != '':
+        text = first_line + '\n' + text
         
     # read data 
     if 'chr' in text[0:15]:
@@ -209,7 +229,7 @@ def chunk_scan(text, columns, delim):
     else:
         dat = pd.read_csv(io.StringIO(text), sep=delim, dtype={0: 'str'}, header=None, low_memory=False)
         dat.columns = columns
-    
+            
     if len(entries) > 0:
         report.append({'col_id': None, 'colname': None,  'issue': 'SPECIAL_CHARACTERS', 
                        'status': 'FIXED', 'row_id': ids, 'invalid_entry': entries})
@@ -310,27 +330,23 @@ def scan_special_chars(t):
     # scan for the not allowed chars
     accepted_chars = re.compile("[^A-Za-z0-9-. +\t\n]")
     finder = re.finditer(accepted_chars, t) 
-    if '#chr' in t:
-        tmp = t.split('\n')
-        first_line_len = len(tmp[0])
-    else:
-        first_line_len = 0
+
     # iterate through all matches
     line_numb = []
     illegal_chars = []
+
     # iterate through all matches
     count = 0
     for match in finder:
         char_pos = match.start(0) + 1
-        if char_pos >= first_line_len:
-            ids = np.logical_and(match.start(0) > np.array(st), match.start(0) < np.array(en))
-            ln = np.where(ids)[0][0] - 1
-            illegal_chars.append(match.group())
-            line_numb.append(ln)
-            if count > 50:
-                print('[INFO]   Too many special characters - limiting to first 50.')
-                break
-            count += 1
+        ids = np.logical_and(match.start(0) > np.array(st), match.start(0) < np.array(en))
+        ln = np.where(ids)[0][0] - 1
+        illegal_chars.append(match.group())
+        line_numb.append(ln)
+        if count > 50:
+            print('[INFO]   Too many special characters - limiting to first 50.')
+            break
+        count += 1
 
     return illegal_chars, line_numb
 
@@ -364,7 +380,7 @@ def scan_sorted(df):
                    'pandas_row_id': [first_unsorted],
                    'invalid_entry': None}
 
-    return df_sorted, summary
+    return summary
 
 
 def get_invalid(df, colname, func):
@@ -430,192 +446,262 @@ def timing(t1, t2):
 
 
 def fix_chrom_col(df, ids):
-    df.iloc[ids, 0] = df.iloc[ids, 0].apply(lambda x: re.sub(r"[^0-9]+", "", x))
+
+    chr = df.iloc[ids, 0].apply(lambda x: [re.sub(r"[^0-9]+", "", x) \
+        if not c in x else x.replace(x, c) for c in ['X', 'Y', 'M', 'MT']])
+    chr = list(chr.apply(lambda x: [e for e in x if e != ''][0]))
+    df.iloc[ids, 0] = chr
+
     return df
+    
+
+# fix chunks: mising, chr prefix, sorting, column order
+def chunk_fix(report, df, fix):
+
+    fixes = {}
+    check_sort = True
+    has_nas = False
+
+    chroms = []
+    missing =  []
+    special = []
+    for item in report:
+        if item['issue'] == 'SPECIAL_CHARACTERS':
+            if fix:
+                special.append('fixed')
+            else:
+                special.append('fail')
+        else:
+            special.append('pass')
+
+        # fix chromosome characters
+        if item['colname'] == "#chrom" and item['issue'] == 'INVALID_FORMATTING' and len(item['row_id']) > 0:
+            if fix:
+                df = fix_chrom_col(df, item['row_id'])
+                ids_fixed = get_invalid(df.iloc[item['row_id'], :], '#chrom', 
+                    lambda x: x not in [str(item) for item in list(range(1,25))] + ['X', 'Y', 'M', 'MT'])
+                if len(ids_fixed[0]) > 0:
+                    check_sort = False
+                    chroms.append('fail') # failed_fix fixed pass fail skip
+                else:
+                    chroms.append('fixed')
+            else:
+                chroms.append('fail')
+        else:
+            chroms.append('pass')
+
+        # missing values characters
+        if item['colname'] != "#chrom" and item['issue'] == 'INVALID_FORMATTING' and len(item['row_id']) > 0:
+            entries = item['invalid_entry']
+            nas = [np.isnan(e) if not isinstance(e, str) else e == '' for e in entries]
+            if sum(nas) > 0:
+                has_nas = True
+                if fix:
+                    missing.append('fixed')
+                else:
+                    missing.append('fail')
+            else:
+                missing.append('pass')
+        else:
+            missing.append('pass')
+
+    # missing values
+    if has_nas and fix:
+        df = df.fillna(value = 0.5)
+    
+    # check if data is sorted
+    if check_sort:
+        s = scan_sorted(df)
+        report.append(s)
+        if len(s) > 0:
+            fixes['unsorted'] = ['fail']
+        else:
+            fixes['unsorted'] = ['pass']
+    else:
+        s = []
+        fixes['unsorted'] = ['skip']
+
+    # reorder the cols
+    cols = ["#chrom", "pos", "ref", "alt", "pval", "mlogp", "beta", "sebeta", "af_alt", "af_alt_cases", "af_alt_controls"]
+    if len(set(cols).difference(set(df.columns))) == 0:
+        if fix:
+            df = df[cols]
+            fixes['cols_order'] = ['fixed']
+        else:
+            fixes['cols_order'] = ['fail']
+    else:
+        fixes['cols_order'] = ['pass']
+
+    fixes['chrom_column'] = list(set(chroms))
+    fixes['missing_values'] = list(set(missing))
+    fixes['special_chars'] = list(set(special))
+
+    return report, df, fixes
+    
+
+def write_stats(fileout, df_lst, num_cpus=0):
+
+    print("[INFO]  Start writing fixed stats file to the file. This might take a few mins.")
+
+    # convert to strings
+    h = '\t'.join(str(elem) for elem in list(df_lst[0].columns))
+    with mgzip.open(fileout, 'wb', thread=num_cpus, blocksize=2 * 10 ** 8) as fw:
+
+        # go through the chuck and combine rows
+        for i, df in enumerate(df_lst):
+
+            # combine strings
+            res = df.apply(lambda y: '\t'.join(str(elem) for elem in y), axis = 1)
+            
+            # concat to a single string
+            res_list = res.tolist()
+
+            # append header if processing first chunk
+            if i == 0:
+                res_list.insert(0, h)
+            
+            res_str = '\n'.join(res_list)
+
+            # append the last EOL symbol at the end of the text
+            if i < len(df_lst):
+                res_str = res_str + '\n'
+            out = fw.write(res_str.encode())
 
 
-# fix: mising, chr prefix, sorting, column order
-def create_report_and_fix(df, report, fix):
+def summarize(res):
+    summary = {}
+    for status in ['pass','fail', 'fixed', 'skip']:
+        status_scan = []
+        for r in res:
+            keys = r[2].keys()
+            status_scan.append([status in r[2][k] for k in r[2].keys()])
+        df_scan = pd.DataFrame(status_scan)
+        df_scan.columns = keys
+        s = df_scan.apply(lambda x: sum(x), axis = 0)
+        summary.update({status: s})
+    return pd.DataFrame.from_dict(summary)
 
-    report_issues_all = list(report.keys())
+
+def format_entries(report, key):
+    z = zip(report[key]['row_id'], report[key]['invalid_entry'])
+    lines = [("\tLine: %s" % e[0]).ljust(15) + "\tEntry: %s" % e[1] for e in z]
+    warn = ' - print first 50' if len(lines) >= 50 else ''
+    nm = "INVALID ENTRIES %s" % report[key]['colname']
+    h = (' %s ' % nm).center(80, '=')
+    rline = ["\n%s\n" % h, '\n'.join(lines[0:49])]
+    return rline, warn
+        
+
+def create_report(report, summary):
+
+    # create reports
     general_report  = [] 
     detailed_report = []
-    cols_order = ["#chrom", "pos", "ref", "alt", "pval", "mlogp", "beta", 
-                  "sebeta", "af_alt", "af_alt_cases", "af_alt_controls"]
+    report_issues_all = list(report.keys())
 
     # special characters
-    if "SPECIAL_CHARACTERS" in list(report.keys()):
-        report_issues_all.remove('SPECIAL_CHARACTERS')
-        z = zip(report['SPECIAL_CHARACTERS']['row_id'], report['SPECIAL_CHARACTERS']['invalid_entry'])
-        lines = [("\tLine: %s" % e[0]).ljust(15) + "\tEntry: %s" % e[1] for e in z]
-        warn = '(print first 50)' if len(lines) >= 50 else ''
-        detailed_report.append("\n%s\n" % ' SPECIAL CHARACTERS '.center(80, '='))
-        detailed_report.append('\n'.join(lines[0:49]))
-        status = '[FIXED]' if fix else '[FAIL] '
-        message = "%s Special characters found in the stats file%s. Check details below." % (status, warn)
+    key = 'SPECIAL_CHARACTERS'
+    if key in list(report.keys()):
+        report_issues_all.remove(key)
+        drep, warn = format_entries(report, key)
+        detailed_report = detailed_report + drep
+        status = 'FIXED' if summary['fixed']['special_chars'] > 0 else 'FAIL'
+        message = "%sSpecial characters found in the stats file%s. Check details below." \
+            % (('[%s]' % status).ljust(8, ' '), warn)
     else:
         message = "[PASS]  No special characters were found in the stats file."
     general_report.append(message)
 
-    # fix chromosome characters
-    k = 'INVALID_FORMATTING_#chrom'
-    check_sort = True
-    if k in report.keys():
-        report_issues_all.remove(k)
-        z = zip(report[k]['row_id'], report[k]['invalid_entry'])
-        lines = [("\tLine: %s" % e[0]).ljust(15) + "\tEntry: %s" % e[1] for e in z]
-        warn = ' - print first 50' if len(lines) >= 50 else ''
-        h = (' INVALID ENTRIES #chrom ').center(80, '=')
-        detailed_report.append("\n%s\n" % h)
-        detailed_report.append('\n'.join(lines[0:49]))
-        if fix:
-            df = fix_chrom_col(df, report[k]['pandas_row_id'])
-            ids_fixed = get_invalid(df.iloc[report[k]['pandas_row_id'], :], '#chrom', 
-                lambda x: x not in [str(item) for item in list(range(1,25))] + ['X', 'Y', 'M', 'MT'])
-            if len(ids_fixed[0]) > 0:
-                message = "[FAIL] Chromosome colum contains invalid entries and \n        validator wasn't" \
-                        + "able to fix that. Check details below."
-                check_sort = False
-            else:
-                message = "[FIXED] Chromosome colum contains invalid entries (total of %s%s).Check details below." % (len(lines), warn)
-        else:
-            message = "[FAIL] Chromosome colum contains invalid entries. Check details below."
-            check_sort = False
+    # chrom column
+    if summary[['fail', 'fixed']].sum(axis=1)['chrom_column'] > 0:
+        key = 'INVALID_FORMATTING_#chrom'
+        report_issues_all.remove(key)
+        drep, warn = format_entries(report, key)
+        detailed_report = detailed_report + drep
+        status = 'FIXED' if summary['fixed']['chrom_column'] > 0 else 'FAIL'
+        message = "%sChromosome colum contains invalid entries%s. "\
+            "Check details below." % (('[%s]' % status).ljust(8, ' '), warn)
     else:
-        message = "[PASS]  No invalid entries in the column #CHROM were found in the stats file."
+        message = "[PASS]  No invalid entries in the column #CHROM "\
+                  "were found in the stats file."
     general_report.append(message)
 
-    # report invalid formatting issue
-    has_nas = False
-    for col in ["pos", "ref", "pval", "mlogp", "beta", "sebeta", "af_alt", "af_alt_cases", "af_alt_controls"]:
-        issue = "INVALID_FORMATTING_%s" % col
-        if issue in list(report.keys()):
-            report_issues_all.remove(issue)
-            entries = report[issue]['invalid_entry']
-            nas = [np.isnan(e) if not isinstance(e, str) else e == '' for e in entries]
-            if sum(nas) > 0:
-                has_nas = True
-            z = zip(report[issue]['row_id'], entries)
-            lines = '\n'.join([("\tLine: %s" % e[0]).ljust(15) + "\tEntry: %s" % e[1] for e in z])
-            nm = "INVALID ENTRIES %s" % col
-            h = (' %s ' % nm).center(80, '=')
-            detailed_report.append("\n%s\n" % h)
-            detailed_report.append(lines)
-            message = "[FAIL]  Invalid entries in the column %s of stats file were found (total of %s). Check details below." % (col.upper(), len(entries))
-        else:
-            message = "[PASS]  No invalid entries in column %s were found in the stats file." % col.upper()
+    # invalid columns
+    cols = ["pos", "ref", "pval", "mlogp", "beta", "sebeta", 
+            "af_alt", "af_alt_cases", "af_alt_controls"]
+    for key in report.keys():
+        if key != 'INVALID_FORMATTING_#chrom' and 'INVALID_FORMATTING' in key:
+            report_issues_all.remove(key)
+            col = report[key]['colname']
+            cols.remove(col)
+            entries = report[key]['invalid_entry']
+            drep, warn = format_entries(report, key)
+            detailed_report = detailed_report + drep
+            nas = [np.isnan(e) for e in entries if not isinstance(e, str)]
+            if sum(nas) == len(entries):
+                continue
+            else:
+                entries_no_nas = [entries[i] for i, x in enumerate(nas) if not x]
+                message = "[FAIL]  Invalid entries found in the column %s of "\
+                    " stats file were found (total of %s)." \
+                    % (col.upper(), len(entries_no_nas))
+                general_report.append(message)
+    
+    # columns which passed the scan for invalid entry
+    for col in cols:
+        message = "[PASS]  No invalid entries in column %s were found in the stats file." % col.upper()
         general_report.append(message)
-    
+
     # missing values
-    if has_nas:    
-        if fix:
-            df = df.fillna(value = 0.5)
-            message = "[FIXED] Missing values found in columns 7-11 of stats file - substitute with 0.5. Check details below."
-        else:
-            message = "[FAIL]  Missing values found in columns 7-11 of stats file. Check details below"
+    if summary['fixed']['missing_values'] > 0 or summary['fail']['missing_values'] > 0:
+        if summary['fixed']['missing_values'] > 0:
+            message = "[FIXED] Missing values found in the data - substitute with 0.5. Check details below."
+        elif summary['fail']['missing_values'] > 0:
+            message = "[FAIL]  Missing values found in the data. Check details below."
     else:
-        message = "[PASS]  No missing values found in columns 7-11 of stats file."
+        message = "[PASS]  No missing values found in the data."
     general_report.append(message)
 
-    # check if data is sorted
-    if check_sort:
-        df, summary = scan_sorted(df)
-        if len(summary) > 0:
-            print("[WARN]  Unsorted contigs were found in the data.")
-            if fix:
-                print("[INFO]  Sorting the data. This might take some time.")
-                df = sort_table(df)
-                message = '[FIXED] Unsorted entries found in the stats file. Fist unsorted row - %s.' % summary['row_id'][0]
-            else:
-                message = '[FAIL]  Unsorted entries found in the stats file. Fist unsorted row - %s.' % summary['row_id'][0]
-        else:
-            message = '[PASS]  No unsorted entries found in the stats file.'
-    else:
-        message = '[SKIP]  Skip checking for unsorted entries due to invalid entries in #chrom column.'
-    general_report.append(message)
-
-    # reorder the cols
-    if len(set(cols_order).difference(set(df.columns))) == 0:
-        if fix:
-            df = df[cols_order]
-    
     # add other errors
     for key in report_issues_all:
-        message = "[FAIL]  File %s." % key.replace('_', ' ').lower()
-        general_report.append(message)
+        if key != 'UNSORTED':
+            message = "[FAIL]  File %s." % key.replace('_', ' ').lower()
+            general_report.append(message)
 
-    r1 = '\n'.join(general_report) + '\n'
-    r2 = '\n'.join(detailed_report) + '\n'
+    grp = '\n'.join(general_report) + '\n'
+    drp = '\n'.join(detailed_report) + '\n'
 
-    return df, r1, r2
+    return grp, drp
+
+
+def sort_data(filename, report):
     
+    # create output temporaty files
+    f1 =  filename + '_part1'
+    f2 = filename + '_part2'
+    f3 = filename + '_sorted'
 
-def sort_table(df):
+    # bash cmds    
+    cmd1 = "zgrep '^[0-9#]' %s | sort -k1,1g -k2,2n > %s" % (filename, f1)
+    cmd2 = "zgrep -v '^[0-9#]' %s | sort -k1,1 -k2,2n > %s" % (filename, f2)
+    cmd3 = "cat %s %s > %s" % (f1, f2, f3)
+    cmd4 =  "gzip %s" % f3
+    cmd5 =  "mv %s.gz %s" % (f3, filename)
     
-    chrs = [str(item) for item in list(range(1,25))] + ['X', 'Y', 'M', 'MT']
-    d = {'chr_numb': list(range(1,len(chrs)+1)), 'chrs': chrs}
-    chr_numbers = pd.DataFrame(d)
-    chr_numbers.index = chr_numbers['chrs']
+    # sort data,gzip and rename
+    try:
+        subprocess.call(cmd1, stderr=subprocess.STDOUT, shell=True, executable='/bin/bash')
+        subprocess.call(cmd2, stderr=subprocess.STDOUT, shell=True, executable='/bin/bash')
+        subprocess.call(cmd3, stderr=subprocess.STDOUT, shell=True, executable='/bin/bash')
+        subprocess.call(cmd4, stderr=subprocess.STDOUT, shell=True, executable='/bin/bash')
+        subprocess.call(cmd5, stderr=subprocess.STDOUT, shell=True, executable='/bin/bash')
+    except subprocess.CalledProcessError as e:
+        print("[ERROR] Sort data error : %s" % e)
+        message  = "[FAIL]  Unsorted contigs found in the data - tried to fix by "\
+            "running command `sort -g -k 1,1 -g -k 2,2` but failed with error %s\n" % e
+    else:
+        message  = "[FIXED] Sorted the data by chromosome and position.\n"  
     
-    # append the column and sort data
-    col_id = df.shape[1]
-    df_sorted = df.copy()
-    df_sorted[col_id] = list(chr_numbers.loc[df_sorted.iloc[:, 0]]['chr_numb'])
-    df_sorted = df_sorted.sort_values([col_id, 
-        df_sorted.columns[1]], ascending = [True, True])
-
-    # drop the column
-    df_sorted = df_sorted.drop(columns=[col_id])
-    return df_sorted
+    subprocess.call("rm %s %s" % (f1, f2), stderr=subprocess.STDOUT, shell=True, executable='/bin/bash')
     
-
-def  write_stats(fileout, df, num_cpus=0):
-
-    print("[INFO]  Start writing fixed stats file to the file. This might take a few mins.")
-
-    # start the timer
-    df.reset_index(drop=True, inplace=True) 
-    st, e = chunk_df_for_writing(df, step=100000)
-
-    # convert to strings
-    h = '\t'.join(str(elem) for elem in list(df.columns))
-    with mgzip.open(fileout, 'wb', thread=num_cpus, blocksize=2 * 10 ** 8) as fw:
-
-        # go through the chuck and combine rows
-        for i, j in enumerate(st):
-            if i == (len(st)-1):
-                start_i = st[i]
-                end_i = e[i]
-            else:
-                start_i = st[i]
-                end_i = e[i] - 1
-            
-            chunk = df.iloc[start_i:end_i, ].copy()
-            res = chunk.apply(lambda y: '\t'.join(str(elem) for elem in y), axis = 1)
-
-            # append header if processing first chunk
-            if i == 0:
-                res.loc[-1] = h
-
-                # shifting index
-                res.index = res.index + 1 
-                res.sort_index(inplace=True) 
-            
-            # concat to a single string
-            res_list = res.tolist()
-            res_str = '\n'.join(res_list)
-            out = fw.write(res_str.encode())
-
-
-def chunk_df_for_writing(df, line_numb=None, step=None):
-    if step is None:
-        step = round(df.shape[0] / line_numb)
-    v = list(range(0, df.shape[0], step))
-    v.append(df.shape[0]-1)
-    v = np.array(v)
-    start = v[list(range(0, len(v)-1))]
-    end = v[list(range(1, len(v)))]
-    return start, end
-
-
-
+    return report + message
