@@ -162,6 +162,8 @@ def check_stats(filename, deep, fix, outdir):
 
 
 def extract_rows_sp(struct, rmap):
+    if rmap is None:
+        return ''
     lines_issues_sp = []
     for i in list(range(len(struct))):        
         x = struct[i]
@@ -183,6 +185,8 @@ def extract_rows_sp(struct, rmap):
 
 
 def extract_rows(struct, rmap):
+    if rmap is None:
+        return ''
     df_extracted_rows =pd.DataFrame()
     index = []
     for i in list(range(len(struct))):
@@ -637,7 +641,7 @@ def write_stats(fileout, df_lst, num_cpus=0):
             # append header if processing first chunk
             if i == 0:
                 res_list.insert(0, h)
-           
+            
             res_str = '\n'.join(res_list)
 
             # append the last EOL symbol at the end of the text

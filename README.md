@@ -9,7 +9,7 @@ User needs to provide:
 
 There are two modes for scanning your stats file: deep and shallow. With the deep mode the whole file is scanned while with the shallow mode ~80k lines are subsampled from the stats file and subjected to the scan. 
 
-**Recommendation**: first run validator in a shallow mode to check whether your metadata is correctly formatted and check if some basic requirements for the stats file are met. Once that is checked - proceed to the deep check of the files.
+**Recommendation**: first run validator in a shallow mode to check whether your metadata is correctly formatted and check if some basic requirements for the stats file are met. Once that is checked - proceed to the deep check of the files. Running **fix** mode might take a long time (more than 20 minutes) if your file is large and if it requires e.g. sorting. Note that validator can fix **some** errors including missing values, unsorted contigs and special characters. 
 
 Expected runtimes:
 + Shallow scan: less than a minute
