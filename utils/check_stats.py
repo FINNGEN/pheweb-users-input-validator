@@ -124,7 +124,7 @@ def check_stats(filename, deep, fix, outdir):
     summary = summarize(res_fixed)
     gr, dr = create_report(report, summary)
 
-    # create a list of chhunk data frames
+    # create a list of chunk data frames
     data_fixed = [ch[1] for ch in res_fixed]
 
     # save file if some fixes were made
@@ -148,7 +148,12 @@ def check_stats(filename, deep, fix, outdir):
     t1 = time.time()
     if summary.loc['unsorted', 'fail'] > 0:
         print("[INFO]  Unsorted contigs found in the data - fixing the data.")
-        gr = sort_data(fout_path, gr, report)
+        if fix:
+            gr = sort_data(fout_path, gr, report)
+        else:
+            first_unsorted = report['UNSORTED']['row_id'][0]
+            message  = "[FAIL]  Unsorted contigs found in the data, first unsorted line: %s.\n" % first_unsorted
+            gr = gr + message
     t2 = time.time()
     t_sort = timing(t1, t2)
     print("[INFO]  Finished sorting stats file: %s"  % t_sort)
@@ -632,7 +637,7 @@ def write_stats(fileout, df_lst, num_cpus=0):
             # append header if processing first chunk
             if i == 0:
                 res_list.insert(0, h)
-            
+           
             res_str = '\n'.join(res_list)
 
             # append the last EOL symbol at the end of the text
@@ -775,7 +780,7 @@ def sort_data(filename, report, full_report):
         message  = "[FAIL]  Unsorted contigs found in the data - tried to fix but failed with error %s\n" % e
     else:
         message  = "[FIXED] Unsorted contigs found in the data - sorted data by " + \
-            "\nchromosome and position. First unsorted row id: %s\n" % first_unsorted  
+            "\nchromosome and position. First unsorted row id: %s\n" % str(first_unsorted)  
     
     subprocess.call("rm %s %s" % (f1, f2), stderr=subprocess.STDOUT, shell=True, executable='/bin/bash')
     
