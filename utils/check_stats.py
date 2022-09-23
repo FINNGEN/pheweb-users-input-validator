@@ -5,7 +5,6 @@ import time
 import xopen
 import mgzip
 import pysam
-import platform
 import subprocess
 import numpy as np
 import pandas as pd
@@ -21,8 +20,9 @@ def check_stats(filename, deep, fix, outdir):
     report = {}
     opened = False
 
-    # check if file can be opened
+     # check if file can be opened
     if is_gz_file(filename):
+        report.update({'IS_COMPRESSED': make_summary("IS_COMPRESSED", None, None, (), (), 'PASS')})
         # read header of the file
         try:
             tbl = pysam.BGZFile(filename)
@@ -33,6 +33,7 @@ def check_stats(filename, deep, fix, outdir):
         else: 
             # 3. Check if file is tab-delimited
             if is_tab_separated(first_row):
+                report.update({'IS_TAB_DELIMITED': make_summary("IS_TAB_DELIMITED", None, None, (), (), 'PASS')})
                 delim = '\t'
             elif is_comma_separated(first_row):
                 delim = ','
@@ -98,10 +99,23 @@ def check_stats(filename, deep, fix, outdir):
     struct = [ (t[0], t[1], fix) for i, t in enumerate(res)]
     with Pool() as pool:
         res_fixed = pool.map(multi_run_wrapper_fix, struct)
-    
+
     # combine the reports
-    report_add = combine_chunks(res_fixed)
+    report_add, rows_map = combine_chunks(res_fixed)
     report.update(report_add)
+
+    # extract rows with issues
+    lines_errors_exclusing_sp = extract_rows(res, rows_map)
+    lines_errors_sp = extract_rows_sp(res, rows_map)
+
+    if len(lines_errors_sp) > 0 or len(lines_errors_exclusing_sp) > 0:
+        lines_errors_all = lines_errors_sp + '\n' + lines_errors_exclusing_sp
+        fout_lines_path = os.path.join(outdir, "{0}_lines_with_errors_unsorted".format(os.path.basename(filename)))
+        with open(fout_lines_path, 'w') as f:
+            f.write(lines_errors_all)
+        fout_lines_path = os.path.abspath(fout_lines_path)
+    else:
+        fout_lines_path = None
 
     # print execution time
     t2 = time.time()
@@ -112,16 +126,14 @@ def check_stats(filename, deep, fix, outdir):
     summary = summarize(res_fixed)
     gr, dr = create_report(report, summary)
 
-    # create a list of chhunk data frames
+    # create a list of chunk data frames
     data_fixed = [ch[1] for ch in res_fixed]
 
-    # write result file
+    # save file if some fixes were made
     t1 = time.time()
     try:
-        # save fixed file to the output folder
         fout = os.path.join(outdir, os.path.basename(filename))
         fout = fout + '.CHUNK.gz' if not deep else fout
-        # write file if some fixes were made
         if fix and summary['fixed'].sum() > 0:
             write_stats(fout, data_fixed, num_cpus=0)    
             fout_path = os.path.abspath(fout)
@@ -130,6 +142,7 @@ def check_stats(filename, deep, fix, outdir):
             fout_path = None
     except Exception as e:
         print("Error occurred while writing output file :: %s. Skip fixing." % e)
+    
     t2 = time.time()
     t_write = timing(t1, t2)
     print("[INFO]  Finished writing stats file: %s"  % t_write)
@@ -138,13 +151,69 @@ def check_stats(filename, deep, fix, outdir):
     t1 = time.time()
     if summary.loc['unsorted', 'fail'] > 0:
         print("[INFO]  Unsorted contigs found in the data - fixing the data.")
-        gr = sort_data(fout_path, gr)
-    
+        if fix:
+            gr = sort_data(fout_path, gr, report)
+        else:
+            first_unsorted = report['UNSORTED']['row_id'][0]
+            message  = "[FAIL]  Unsorted contigs found in the data, first unsorted line: %s.\n" % first_unsorted
+            gr = gr + message
+    else:
+        gr = gr + "[PASS]  No unsorted contigs were found in the data."
+
     t2 = time.time()
     t_sort = timing(t1, t2)
-    print("[INFO]  Finished sorting stats file: %s"  % t_write)
+    print("[INFO]  Finished sorting stats file: %s"  % t_sort)
 
-    return gr, dr, t_read, t_write, t_sort, fout_path
+    return gr, dr, t_read, t_write, t_sort, fout_path, fout_lines_path
+
+
+def extract_rows_sp(struct, rmap):
+    if rmap is None:
+        return ''
+    lines_issues_sp = []
+    for i in list(range(len(struct))):        
+        x = struct[i]
+        rmap_chunk = rmap[i]
+        rmap_chunk_df = pd.DataFrame(rmap_chunk)
+        # do not report the same rows several times
+        rmap_chunk_df = rmap_chunk_df[~rmap_chunk_df.duplicated()]
+        rmap_chunk_df.index = rmap_chunk_df['row_id_chunk']
+        if len(x[2]) > 0:
+            rowids = list(set(x[2].keys()))
+            lines = [x[2][ri] for ri in rowids]
+            prefix = list(rmap_chunk_df.loc[rowids, 'row_id_final'].apply(lambda x: ("LINE %s:" % x).ljust(15, ' ')))
+            lines_h = [ "%s%s" % z for z in zip(prefix, lines)]
+            lines_issues_sp += lines_h
+
+    combined = '\n'.join(lines_issues_sp)
+
+    return combined
+
+
+def extract_rows(struct, rmap):
+    if rmap is None:
+        return ''
+    df_extracted_rows =pd.DataFrame()
+    index = []
+    for i in list(range(len(struct))):
+        r = struct[i][0]
+        df = struct[i][1]
+        rmap_chunk = rmap[i]
+        rmap_chunk_df = pd.DataFrame(rmap_chunk)
+        # do not report the same rows several times
+        rmap_chunk_df = rmap_chunk_df[~rmap_chunk_df.duplicated()]
+        rmap_chunk_df.index = rmap_chunk_df['row_id_chunk']
+        for x in r:
+            if len(x['row_id']) > 0 and x['issue'] != 'SPECIAL_CHARACTERS' and x['issue'] != 'UNSORTED':
+                df_extracted_rows = df_extracted_rows.append(df.iloc[x['row_id']])
+                index = index + list(rmap_chunk_df.loc[x['row_id'], 'row_id_final'])
+   
+    combined = list(df_extracted_rows.apply(lambda y: '\t'.join(str(elem) for elem in y), axis = 1))
+    prefix = [("LINE %s:" % i).ljust(15, ' ') for i in index]
+    lines_final = ["%s%s" % (prefix[j], combined[j]) for j in list(range(len(combined)))]
+    res = '\n'.join(lines_final)
+   
+    return res
 
 
 def combine_chunks(multithreads_res):
@@ -161,6 +230,7 @@ def combine_chunks(multithreads_res):
     # combine report from chunks
     report_combined = []
     issues = []
+    rows_map = []
     j = 0
     tot_reports = {i: multithreads_res[i][0] for i in list(range(len(multithreads_res)))}
     for i in tot_reports.items():
@@ -169,15 +239,22 @@ def combine_chunks(multithreads_res):
         for k in list(range(len(i[1]))):
             if len(i[1][k]) > 0 and len(i[1][k]['row_id']) > 0:
                 item = i[1][k].copy()
+                row_id_chunk = item['row_id']
                 item['pandas_row_id'] = [row + pandas_rowid for row in item['row_id']]
                 item['row_id'] = [row + offset_rowid for row in item['row_id']]
                 if item['colname'] is not None:
                     issues.append(item['issue'] + '_' + item['colname'])
                 else:
                     issues.append(item['issue'])
+                d = {
+                    'row_id_chunk': row_id_chunk,
+                    'row_id_final': item['row_id'],
+                    'chunk_id': i[0],
+                }
+                rows_map.append(d)
                 report_combined.append(item)
         j += 1
-    
+
     issues = list(set(issues))
     report_final = {}
     for item in report_combined:
@@ -193,12 +270,21 @@ def combine_chunks(multithreads_res):
             report_final[key]['row_id'] = report_final[key]['row_id'] + item['row_id']
             report_final[key]['pandas_row_id'] = report_final[key]['pandas_row_id'] + item['pandas_row_id']
 
-    return report_final
+    if len(rows_map) > 0:
+        rows_map_final = {i: {'row_id_chunk': [],  'row_id_final': []} for i in list(range(len(multithreads_res)))}
+        for r in rows_map:
+            key = r['chunk_id']
+            rows_map_final[key]['row_id_chunk'] = rows_map_final[key]['row_id_chunk'] + r['row_id_chunk']
+            rows_map_final[key]['row_id_final'] = rows_map_final[key]['row_id_final'] + r['row_id_final']
+    else:
+        rows_map_final = None
+    
+    return report_final, rows_map_final
 
 
 def multi_run_wrapper(args):
-   r, d = chunk_scan(*args)
-   return r, d
+   r, d, sp = chunk_scan(*args)
+   return r, d, sp
 
 
 def multi_run_wrapper_fix(args):
@@ -215,7 +301,8 @@ def chunk_scan(text, columns, delim):
         first_line, text = text.split('\n', 1)
     else: 
         first_line = ''
-    entries, ids = scan_special_chars(text)
+    entries, ids, lines_sp = scan_special_chars(text)
+
     for sp in entries:
         text = text.replace(sp, '')
     
@@ -316,7 +403,7 @@ def chunk_scan(text, columns, delim):
     report.append(s)
 
     # return 
-    return report, dat
+    return report, dat, lines_sp
 
 
 def scan_special_chars(t):
@@ -328,7 +415,7 @@ def scan_special_chars(t):
     en = sizes_cumsum[1:len(sizes_cumsum)]
 
     # scan for the not allowed chars
-    accepted_chars = re.compile("[^A-Za-z0-9-. +\t\n]")
+    accepted_chars = re.compile("[^A-Za-z0-9-. +,\t\n]")
     finder = re.finditer(accepted_chars, t) 
 
     # iterate through all matches
@@ -337,10 +424,11 @@ def scan_special_chars(t):
 
     # iterate through all matches
     count = 0
+    lines_issues = {}
     for match in finder:
-        char_pos = match.start(0) + 1
         ids = np.logical_and(match.start(0) > np.array(st), match.start(0) < np.array(en))
-        ln = np.where(ids)[0][0] - 1
+        ln = np.where(ids)[0][0]
+        lines_issues.update({ln: lines[ln]})
         illegal_chars.append(match.group())
         line_numb.append(ln)
         if count > 50:
@@ -348,7 +436,7 @@ def scan_special_chars(t):
             break
         count += 1
 
-    return illegal_chars, line_numb
+    return illegal_chars, line_numb, lines_issues
 
 
 def scan_sorted(df):
@@ -389,14 +477,13 @@ def get_invalid(df, colname, func):
     return entries, ids
 
 
-def make_summary(issue, col_id, colname, entries, ids):
+def make_summary(issue, col_id, colname, entries, ids, status='FAIL'):
     return {'col_id': col_id, 
             'colname': colname,
             'issue': issue,
-            'status': 'FAIL', 
+            'status': status, 
             'row_id': ids,
             'invalid_entry': entries}
-
 
 def isfloat(num):
     try:
@@ -586,7 +673,8 @@ def format_entries(report, key):
     z = zip(report[key]['row_id'], report[key]['invalid_entry'])
     lines = [("\tLine: %s" % e[0]).ljust(15) + "\tEntry: %s" % e[1] for e in z]
     warn = ' - print first 50' if len(lines) >= 50 else ''
-    nm = "INVALID ENTRIES %s" % report[key]['colname']
+    colname = report[key]['colname'] if report[key]['colname'] is not None else ''
+    nm = "INVALID ENTRIES %s" % colname
     h = (' %s ' % nm).center(80, '=')
     rline = ["\n%s\n" % h, '\n'.join(lines[0:49])]
     return rline, warn
@@ -643,7 +731,7 @@ def create_report(report, summary):
             else:
                 entries_no_nas = [entries[i] for i, x in enumerate(nas) if not x]
                 message = "[FAIL]  Invalid entries found in the column %s of "\
-                    " stats file were found (total of %s)." \
+                    " stats file were found (total of %s, print first 50)." \
                     % (col.upper(), len(entries_no_nas))
                 general_report.append(message)
     
@@ -665,7 +753,7 @@ def create_report(report, summary):
     # add other errors
     for key in report_issues_all:
         if key != 'UNSORTED':
-            message = "[FAIL]  File %s." % key.replace('_', ' ').lower()
+            message = "[%s]  File %s." % (report[key]['status'], key.replace('_', ' ').lower())
             general_report.append(message)
 
     grp = '\n'.join(general_report) + '\n'
@@ -674,8 +762,8 @@ def create_report(report, summary):
     return grp, drp
 
 
-def sort_data(filename, report):
-    
+def sort_data(filename, report, full_report):
+
     # create output temporaty files
     f1 =  filename + '_part1'
     f2 = filename + '_part2'
@@ -687,6 +775,8 @@ def sort_data(filename, report):
     cmd3 = "cat %s %s > %s" % (f1, f2, f3)
     cmd4 =  "gzip %s" % f3
     cmd5 =  "mv %s.gz %s" % (f3, filename)
+
+    first_unsorted = full_report['UNSORTED']['row_id'][0]
     
     # sort data,gzip and rename
     try:
@@ -697,10 +787,10 @@ def sort_data(filename, report):
         subprocess.call(cmd5, stderr=subprocess.STDOUT, shell=True, executable='/bin/bash')
     except subprocess.CalledProcessError as e:
         print("[ERROR] Sort data error : %s" % e)
-        message  = "[FAIL]  Unsorted contigs found in the data - tried to fix by "\
-            "running command `sort -g -k 1,1 -g -k 2,2` but failed with error %s\n" % e
+        message  = "[FAIL]  Unsorted contigs found in the data - tried to fix but failed with error %s\n" % e
     else:
-        message  = "[FIXED] Sorted the data by chromosome and position.\n"  
+        message  = "[FIXED] Unsorted contigs found in the data - sorted data by " + \
+            "\nchromosome and position. First unsorted row id: %s\n" % str(first_unsorted)  
     
     subprocess.call("rm %s %s" % (f1, f2), stderr=subprocess.STDOUT, shell=True, executable='/bin/bash')
     

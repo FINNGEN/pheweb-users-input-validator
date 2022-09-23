@@ -58,7 +58,7 @@ def main():
     t_read = t_write = ''
     report_stats = report_stats_scan = report_meta = ''
     tot_meta_checks = 4
-    tot_stats_checks = 13
+    tot_stats_checks = 15
 
     # check if provided input meta file exists
     if not os.path.exists(meta):
@@ -92,7 +92,7 @@ def main():
     print("[INFO]  Check stats file.")
     try:
         report_stats, report_stats_scan, t_read, t_write, \
-            t_sort, stats_fixed_file = check_stats(stats, deep, fix, outdir)
+            t_sort, stats_fixed_file, stats_lines_with_errors = check_stats(stats, deep, fix, outdir)
 
     except Exception as e:
         print("Error occurred during processing of the stats file :: %s" % e)
@@ -139,7 +139,7 @@ def main():
 
     # prepare messages
     mes_end = "\nSCAN ENDED AT: %s\n" % end
-    outputs = [os.path.abspath(fout), meta_fixed_file, stats_fixed_file]
+    outputs = [os.path.abspath(fout), meta_fixed_file, stats_fixed_file, stats_lines_with_errors]
     outputs = [o for o in outputs if o is not None]
     mes_output = "\nOUTPUT FILES:\n\t%s" % '\n\t'.join(outputs)    
     mes_input = "\nINPUT FILES:\n\t%s" % '\n\t'.join([os.path.abspath(meta), os.path.abspath(stats)])
@@ -187,3 +187,4 @@ def str2bool(v):
 
 if __name__ == '__main__':
     main()
+
