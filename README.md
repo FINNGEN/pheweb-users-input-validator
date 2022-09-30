@@ -9,7 +9,16 @@ User needs to provide:
 
 There are two modes for scanning your stats file: deep and shallow. With the deep mode the whole file is scanned while with the shallow mode ~80k lines are subsampled from the stats file and subjected to the scan. 
 
-**Recommendation**: first run validator in a shallow mode to check whether your metadata is correctly formatted and check if some basic requirements for the stats file are met. Once that is checked - proceed to the deep check of the files.
+**Recommendation**: first run validator in a shallow mode to check whether your metadata is correctly formatted and check if some basic requirements for the stats file are met. Once that is checked - proceed to the deep check of the files: first without "fix" mode and then with it. Running **fix** mode might take a long time (more than 20 minutes) if your file is large and if it requires e.g. sorting. Note that validator can fix **some** errors including missing values, unsorted contigs and special characters but not all of them. 
+
+
+## Two versions of the tool
+
+**Version 1: validator.py**
+Recommented version of the tool. This version performs error scans as well as fixing of the issues in parallel in chucks. 
+
+**Version 2: validator_req25GBmem.py**
+This version of the tool is slightly faster than the first version mentioned above if input stats data requires sorting fix. This version reads the whole input stats dataset in memory and in case the data is large it might require bigger machines in terms of memory to run the validator.
 
 Expected runtimes:
 + Shallow scan: less than a minute
