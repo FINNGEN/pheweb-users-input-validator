@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 import os
@@ -54,8 +54,8 @@ def main():
     infomes="Arguments: \n\tDeep scan  - %s\n\tFix issues - %s" % (deep, fix)
   
     # initialize
-    meta_fixed_file = stats_fixed_file = None
-    t_read = t_write = ''
+    meta_fixed_file = stats_fixed_file = stats_lines_with_errors = None
+    t_read = t_write = t_sort = ''
     report_stats = report_stats_scan = report_meta = ''
     tot_meta_checks = 4
     tot_stats_checks = 15
@@ -93,7 +93,6 @@ def main():
     try:
         report_stats, report_stats_scan, t_read, t_write, \
             t_sort, stats_fixed_file, stats_lines_with_errors = check_stats(stats, deep, fix, outdir)
-
     except Exception as e:
         print("Error occurred during processing of the stats file :: %s" % e)
     print("[INFO]  Stats file check completed.")
@@ -103,10 +102,6 @@ def main():
     sstats = count(report_stats)
     meta_md5sum = get_md5sum(meta)
     stats_md5sum = get_md5sum(stats)
-
-    # totals
-    # tot_meta_checks = sum(mstats)
-    # tot_stats_checks = sum(sstats)
 
     # stats table header
     chl = max([len(os.path.basename(stats)) + 5, len(os.path.basename(meta)) + 5])
@@ -145,7 +140,6 @@ def main():
     mes_input = "\nINPUT FILES:\n\t%s" % '\n\t'.join([os.path.abspath(meta), os.path.abspath(stats)])
 
     # save the reports
-    # sum_sep = "%s\n" % (" SUMMARY ").center(80, '=')
     exec_time = "Read stats file %s\nWrite stats file %s\nSort stats file %s\nTotal %s\n" % \
         (t_read.lower(), t_write.lower(), t_sort.lower(), t_total.lower())
     report = "\n".join([mes_start, report_meta, report_stats, sep,
