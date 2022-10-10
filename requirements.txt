@@ -2,4 +2,3 @@ pandas
 pysam
 xopen
 mgzip
-Jinja2
