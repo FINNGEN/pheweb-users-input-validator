@@ -112,7 +112,8 @@ def check_stats(filename, deep, fix, outdir):
 
     if len(lines_errors_sp) > 0 or len(lines_errors_exclusing_sp) > 0:
         lines_errors_all = lines_errors_sp + '\n' + lines_errors_exclusing_sp
-        fout_lines_path = os.path.join(outdir, "{0}_lines_with_errors_unsorted".format(os.path.basename(filename)))
+        fname = os.path.basename(filename)
+        fout_lines_path = os.path.join(outdir, "{0}_lines_with_errors_unsorted".format(fname.split('.gz')[0]))
         with open(fout_lines_path, 'w') as f:
             f.write(lines_errors_all)
         fout_lines_path = os.path.abspath(fout_lines_path)
@@ -565,6 +566,7 @@ def chunk_fix(report, df, fix):
 
         # fix chromosome characters
         if item['colname'] == "#chrom" and item['issue'] == 'INVALID_FORMATTING' and len(item['row_id']) > 0:
+            check_sort = False
             if fix:
                 df = fix_chrom_col(df, item['row_id'])
                 ids_fixed = get_invalid(df.iloc[item['row_id'], :], '#chrom', 
