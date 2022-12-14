@@ -44,14 +44,14 @@ STATS:
 
 
 The following fixes can be done by the validator **when possible**:
-- Remove special characters from the metadata file
-- Remove special characters from the stats file
-- Fix missing values in the colums 7-11
-- Remove chromosome prefix, e.g. "chrN" change to "N"
-- Sort stats file if unsorted positions are found
-- Fix column order
+- Remove special characters from the metadata file.
+- Remove special characters from the stats file.
+- Fix missing values in the colums 7-11.
+- Remove chromosome prefix, e.g. "chrN" change to "N".
+- Sort stats file if unsorted positions are found.
+- Fix column order.
 
-What is **not** fixed in the stats file:
+What is not fixed in the stats file:
 - Incorrect values in the columns, for instance negative p-values
 - Naming of the stats file in te metadata json file
 
