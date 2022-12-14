@@ -100,7 +100,7 @@ def check_meta(meta_filename, stats_filename, outdir, fix):
         message="""[PASS]  Metadata field "name" matches with summary stats file name."""
     report_dict.update({'filename': message})
 
-    w = len(re.findall("FAIL", str(report_dict))) + len(re.findall("FIXED", str(report_dict)))
+    w = len(re.findall("FIXED", str(report_dict)))
 
     # save the mdata
     if fix and w > 0:

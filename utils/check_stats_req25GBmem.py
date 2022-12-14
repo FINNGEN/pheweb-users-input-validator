@@ -4,14 +4,15 @@ import io
 import os
 import re
 import time
-from uuid import RFC_4122
 import xopen
 import mgzip
 import pysam
+import warnings
 import numpy as np
 import pandas as pd
 from multiprocessing import Pool
 
+warnings.simplefilter(action='ignore', category=FutureWarning)
     
 def check_stats(filename, deep, fix, outdir):
 
@@ -22,8 +23,9 @@ def check_stats(filename, deep, fix, outdir):
     report = {}
     opened = False
 
-    # check if file can be opened
+     # check if file can be opened
     if is_gz_file(filename):
+        report.update({'IS_COMPRESSED': make_summary("IS_COMPRESSED", None, None, (), (), 'PASS')})
         # read header of the file
         try:
             tbl = pysam.BGZFile(filename)
@@ -34,6 +36,7 @@ def check_stats(filename, deep, fix, outdir):
         else: 
             # 3. Check if file is tab-delimited
             if is_tab_separated(first_row):
+                report.update({'IS_TAB_DELIMITED': make_summary("IS_TAB_DELIMITED", None, None, (), (), 'PASS')})
                 delim = '\t'
             elif is_comma_separated(first_row):
                 delim = ','
@@ -117,6 +120,7 @@ def check_stats(filename, deep, fix, outdir):
             fout = fout + '.CHUNK.gz'
         # write file
         if fix and w > 0:
+            print("[INFO]  Some fixes were made - writing fixed stats file. Check details in the final report.")
             write_stats(fout, data_fixed, num_cpus=0)    
             fout = os.path.abspath(fout)
         else:
@@ -133,6 +137,15 @@ def check_stats(filename, deep, fix, outdir):
 
     return r1, r2, t_read, t_write, fout
 
+def flatten(l):
+    new_list = []
+    for sublist in l:
+        if isinstance(sublist, list):
+            for item in sublist:
+                new_list.append(item)
+        else:
+            new_list.append(sublist)
+    return new_list
 
 def combine_chunks(multithreads_res):
 
@@ -187,11 +200,9 @@ def combine_chunks(multithreads_res):
     
     return report_final, data
 
-
 def multi_run_wrapper(args):
    r, d = chunk_scan(*args)
    return r, d
-
 
 def chunk_scan(text, columns, delim):
 
@@ -233,7 +244,8 @@ def chunk_scan(text, columns, delim):
 
     # check if pval column contain correct values
     try:
-        entries, ids = get_invalid(dat, 'pval', lambda x: not ((x >= 0 and x <= 1) or np.isnan(x)))
+        # entries, ids = get_invalid(dat, 'pval', lambda x: not ((x >= 0 and x <= 1) or np.isnan(x)))
+        entries, ids = get_invalid(dat, 'pval', lambda x: not (x >= 0 and x <= 1))
     except TypeError as e:
         entries, ids = get_invalid(dat, 'pval', lambda x: not bool(re.match("[0-9+.-]+", x)))
         s = make_summary("INVALID_FORMATTING", list(dat.columns).index('pval'), 'pval', entries, ids)
@@ -266,7 +278,7 @@ def chunk_scan(text, columns, delim):
         s = make_summary("INVALID_FORMATTING", list(dat.columns).index('sebeta'), 'sebeta', entries, ids)
     report.append(s)
 
-    # check if pval column contain correct values
+    # check if pval column contain correct values, will pick NAs as well
     try:
         entries, ids = get_invalid(dat, 'af_alt', lambda x: not (x >= 0 and x <= 1))
     except TypeError as e:
@@ -276,7 +288,7 @@ def chunk_scan(text, columns, delim):
         s = make_summary("INVALID_FORMATTING", list(dat.columns).index('af_alt'), 'af_alt', entries, ids)
     report.append(s)
 
-    # check if pval column contain correct values
+    # check if pval column contain correct values, will pick NAs as well
     try:
         entries, ids = get_invalid(dat, 'af_alt_cases', lambda x: not (x >= 0 and x <= 1))
     except TypeError as e:
@@ -286,7 +298,7 @@ def chunk_scan(text, columns, delim):
         s = make_summary("INVALID_FORMATTING", list(dat.columns).index('af_alt_cases'), 'af_alt_cases', entries, ids)
     report.append(s)
 
-    # check if pval column contain correct values
+    # check if pval column contain correct values, will pick NAs as well
     try:
         entries, ids = get_invalid(dat, 'af_alt_controls', lambda x: not (x >= 0 and x <= 1))
     except TypeError as e:
@@ -298,7 +310,6 @@ def chunk_scan(text, columns, delim):
 
     # return 
     return report, dat
-
 
 def scan_special_chars(t):
     # split lines
@@ -335,7 +346,6 @@ def scan_special_chars(t):
 
     return illegal_chars, line_numb
 
-
 def scan_sorted(df):
 
     # specify the order
@@ -367,21 +377,18 @@ def scan_sorted(df):
 
     return df_sorted, summary
 
-
 def get_invalid(df, colname, func):
     ids = list(df.loc[df.loc[:, colname].apply(func)].index)
     entries = list(df.loc[ids, colname])
     return entries, ids
 
-
-def make_summary(issue, col_id, colname, entries, ids):
+def make_summary(issue, col_id, colname, entries, ids, status='FAIL'):
     return {'col_id': col_id, 
             'colname': colname,
             'issue': issue,
-            'status': 'FAIL', 
+            'status': status, 
             'row_id': ids,
             'invalid_entry': entries}
-
 
 def isfloat(num):
     try:
@@ -390,14 +397,12 @@ def isfloat(num):
     except ValueError:
         return False
 
-
 def isint(num):
     try:
         int(num)
         return True
     except ValueError:
         return False
-
 
 def extract_lnumb(tfull, char):
     lines = tfull.split('\n')
@@ -410,18 +415,14 @@ def is_gz_file(filepath):
     with open(filepath, 'rb') as test_f:
         return test_f.read(2) == b'\x1f\x8b'
 
-
 def is_tab_separated(line):
     return len(line.split('\t')) > 1
-
 
 def is_comma_separated(line):
     return len(line.split(',')) > 1
 
-
 def is_space_separated(line):
     return len(line.split(' ')) > 1
-
 
 def timing(t1, t2):
     td = t2 - t1
@@ -429,13 +430,29 @@ def timing(t1, t2):
          round(td/60, 2) if td > 60 else "%s sec" % round(td, 2)
     return m
 
-
 def fix_chrom_col(df, ids):
     df.iloc[ids, 0] = df.iloc[ids, 0].apply(lambda x: re.sub(r"[^0-9]+", "", x))
     return df
 
+def format_entries(report, key, status):
+    z = zip(report[key]['row_id'], report[key]['invalid_entry'])
+    space = 20
+    lines = [("\tLine: %s" % e[0]).ljust(space) + 
+             ("\tEntry: %s" % e[1]).ljust(space) + 
+             ("\tStatus: %s" % status).ljust(space) for e in z]
+    warn = ' - print first 50, total of %s' % len(lines) if len(lines) >= 50 else ''
+    if report[key]['colname'] is not None:
+        colname = report[key]['colname']
+        lines = ["\n%s:" % colname.upper(), '\n'.join(lines[0:49])]
+    else:
+        lines = ['\n', '\n'.join(lines[0:49])]
+    return lines, warn
+     
+def filter(ind, arr):
+    arr_updated = [elem for j, elem in enumerate(arr) if j in ind]
+    return arr_updated
 
-# fix: mising, chr prefix, sorting, column order
+# fix: special chars, mising, chr prefix, sorting, column order
 def create_report_and_fix(df, report, fix):
 
     report_issues_all = list(report.keys())
@@ -445,112 +462,147 @@ def create_report_and_fix(df, report, fix):
                   "sebeta", "af_alt", "af_alt_cases", "af_alt_controls"]
 
     # special characters
-    if "SPECIAL_CHARACTERS" in list(report.keys()):
-        report_issues_all.remove('SPECIAL_CHARACTERS')
-        z = zip(report['SPECIAL_CHARACTERS']['row_id'], report['SPECIAL_CHARACTERS']['invalid_entry'])
-        lines = [("\tLine: %s" % e[0]).ljust(15) + "\tEntry: %s" % e[1] for e in z]
-        warn = '(print first 50)' if len(lines) >= 50 else ''
-        detailed_report.append("\n%s\n" % ' SPECIAL CHARACTERS '.center(80, '='))
-        detailed_report.append('\n'.join(lines[0:49]))
-        status = '[FIXED]' if fix else '[FAIL] '
-        message = "%s Special characters found in the stats file%s. Check details below." % (status, warn)
+    key = 'SPECIAL_CHARACTERS'
+    if key in list(report.keys()):
+        report_issues_all.remove(key)
+        status = 'FIXED' if fix else 'FAIL'
+        lines, warn = format_entries(report, key, status.lower())
+        message = "%sSpecial characters found in the stats file%s.\n        Check details under SPECIAL CHARACTERS section below." \
+            % (('[%s]' % status).ljust(8, ' '), warn)
+        header = ['\n', (' SPECIAL CHARACTERS ').center(90, '=')]
+        detailed_report = detailed_report + header + lines[0:49] 
     else:
         message = "[PASS]  No special characters were found in the stats file."
     general_report.append(message)
 
     # fix chromosome characters
-    k = 'INVALID_FORMATTING_#chrom'
     check_sort = True
+    invalid_entries_keys = []
+    k = 'INVALID_FORMATTING_#chrom'
     if k in report.keys():
-        report_issues_all.remove(k)
-        z = zip(report[k]['row_id'], report[k]['invalid_entry'])
-        lines = [("\tLine: %s" % e[0]).ljust(15) + "\tEntry: %s" % e[1] for e in z]
-        warn = ' - print first 50' if len(lines) >= 50 else ''
-        h = (' INVALID ENTRIES #chrom ').center(80, '=')
-        detailed_report.append("\n%s\n" % h)
-        detailed_report.append('\n'.join(lines[0:49]))
         if fix:
+            report_issues_all.remove(k)
+            invalid_entries_keys.append(k)
             df = fix_chrom_col(df, report[k]['pandas_row_id'])
             ids_fixed = get_invalid(df.iloc[report[k]['pandas_row_id'], :], '#chrom', 
                 lambda x: x not in [str(item) for item in list(range(1,25))] + ['X', 'Y', 'M', 'MT'])
             if len(ids_fixed[0]) > 0:
                 message = "[FAIL] Chromosome colum contains invalid entries and \n        validator wasn't" \
-                        + "able to fix that. Check details below."
+                        + "able to fix that. Check details under INVALID ENTRIES section below."
                 check_sort = False
             else:
-                message = "[FIXED] Chromosome colum contains invalid entries (total of %s%s).Check details below." % (len(lines), warn)
+                message = "[FIXED] Chromosome colum contains invalid entries. Check details under INVALID ENTRIES section below."
         else:
-            message = "[FAIL] Chromosome colum contains invalid entries. Check details below."
+            message = "[FAIL] Chromosome colum contains invalid entries. Check details under INVALID ENTRIES section below."
             check_sort = False
     else:
         message = "[PASS]  No invalid entries in the column #CHROM were found in the stats file."
     general_report.append(message)
 
-    # report invalid formatting issue
-    has_nas = False
-    for col in ["pos", "ref", "pval", "mlogp", "beta", "sebeta", "af_alt", "af_alt_cases", "af_alt_controls"]:
-        issue = "INVALID_FORMATTING_%s" % col
-        if issue in list(report.keys()):
-            report_issues_all.remove(issue)
-            entries = report[issue]['invalid_entry']
-            nas = [np.isnan(e) if not isinstance(e, str) else e == '' for e in entries]
-            if sum(nas) > 0:
-                has_nas = True
-            z = zip(report[issue]['row_id'], entries)
-            lines = '\n'.join([("\tLine: %s" % e[0]).ljust(15) + "\tEntry: %s" % e[1] for e in z])
-            nm = "INVALID ENTRIES %s" % col
-            h = (' %s ' % nm).center(80, '=')
-            detailed_report.append("\n%s\n" % h)
-            detailed_report.append(lines)
-            message = "[FAIL]  Invalid entries in the column %s of stats file were found (total of %s). Check details below." % (col.upper(), len(entries))
-        else:
-            message = "[PASS]  No invalid entries in column %s were found in the stats file." % col.upper()
-        general_report.append(message)
-    
+    # invalid entries in columns, exclude missing values
+    missing_vals_keys = []
+    reports_invalid = {}
+    reports_missing = {}
+    col_ids=[1,2] + list(range(4,len(cols_order)))
+    for col in list(np.array(cols_order)[col_ids]):
+        key = "INVALID_FORMATTING_%s" % col
+        if key in list(report.keys()):
+            entries = report[key]['invalid_entry']            
+            report_nas = report[key].copy()
+            report_invalid = report[key].copy()
+
+            # ids of nas and invalid
+            nas_ids = [i for i,elem in enumerate(entries) if np.isnan(elem)]
+            invalid_ids = [i for i,elem in enumerate(entries) if not np.isnan(elem)]
+
+            # filter indices
+            for k in ['row_id', 'invalid_entry', 'pandas_row_id']:
+                report_nas[k] = filter(nas_ids, report_nas[k])
+                report_invalid[k] = filter(invalid_ids, report_invalid[k])
+            
+            # append to reports for later summary of all cols in a single section
+            if len(nas_ids)  > 0 :
+                reports_missing[key] = report_nas
+                missing_vals_keys.append(key)
+            
+            # append to reports for later summary of all cols in a single section
+            if len(invalid_ids) > 0:
+                reports_invalid[key] = report_invalid
+                invalid_entries_keys.append(key)
+
+            # remove from processed keys
+            report_issues_all.remove(key)
+
+    # invalid entries in columns
+    if len(invalid_entries_keys) > 0:
+        message = "[FAIL]  Invalid entries found in the columns of the stats file.\n" + \
+                  "        Check details under INVALID ENTRIES section."
+        tuples = [format_entries(reports_invalid, k, "fail") for k in invalid_entries_keys]
+        lines = [t[0] for t in tuples]
+        header = ['\n', (' INVALID ENTRIES ').center(90, '=')]
+        detailed_report = detailed_report + header + lines
+    else:
+        message = "[PASS]  No invalid entries in columns of the stats file were found."
+    general_report.append(message)
+
     # missing values
-    if has_nas:    
+    cols_fix_nas = ["beta", "sebeta", "af_alt", "af_alt_cases", "af_alt_controls"]
+    if len(missing_vals_keys) > 0:
         if fix:
-            df = df.fillna(value = 0.5)
-            message = "[FIXED] Missing values found in columns 7-11 of stats file - substitute with 0.5. Check details below."
+            df[cols_fix_nas] = df[cols_fix_nas].fillna(value = 0.5)
+            status = "FIXED"
         else:
-            message = "[FAIL]  Missing values found in columns 7-11 of stats file. Check details below"
+            status = "FAIL"
+        message = "%sMissing values found in columns 7-11 - substitute with 0.5.\n        Check details under MISSING VALUES section below." % ('[%s]' % status).ljust(8, ' ')
+        tuples = [format_entries(reports_missing, k, status.lower()) for k in missing_vals_keys]
+        lines = [t[0] for t in tuples]
+        header = ['\n', (' MISSING VALUES ').center(90, '=')]
+        detailed_report = detailed_report + header + lines
     else:
         message = "[PASS]  No missing values found in columns 7-11 of stats file."
     general_report.append(message)
-
+    
     # check if data is sorted
     if check_sort:
         df, summary = scan_sorted(df)
         if len(summary) > 0:
-            print("[WARN]  Unsorted contigs were found in the data.")
+            print("[WARN]  Unsorted positions were found in the data.")
             if fix:
                 print("[INFO]  Sorting the data. This might take some time.")
                 df = sort_table(df)
-                message = '[FIXED] Unsorted entries found in the stats file. Fist unsorted row - %s.' % summary['row_id'][0]
+                message = '[FIXED] Unsorted positions found in the stats file. Fist unsorted row - %s.' % summary['row_id'][0]
             else:
-                message = '[FAIL]  Unsorted entries found in the stats file. Fist unsorted row - %s.' % summary['row_id'][0]
+                message = '[FAIL]  Unsorted positions found in the stats file. Fist unsorted row - %s.' % summary['row_id'][0]
         else:
-            message = '[PASS]  No unsorted entries found in the stats file.'
+            message = '[PASS]  No unsorted positions found in the stats file.'
     else:
-        message = '[SKIP]  Skip checking for unsorted entries due to invalid entries in #chrom column.'
+        message = "[FAIL]  Unsorted positions were found in the data. " + \
+            "\nValidator wasn't able to fix this problem due to invalid positions in the #chrom column."
     general_report.append(message)
 
     # reorder the cols
     if len(set(cols_order).difference(set(df.columns))) == 0:
         if fix:
             df = df[cols_order]
+            message = "[FIXED] Columns order fixed."
+        else:
+            message = "[FAIL]  Columns order fixed."
+    else:
+        message = "[PASS]  Correct columns order in the stats file."
+    general_report.append(message)
     
     # add other errors
     for key in report_issues_all:
-        message = "[FAIL]  File %s." % key.replace('_', ' ').lower()
-        general_report.append(message)
+        if key != 'UNSORTED':
+            message = "[%s]  File %s." % (report[key]['status'], key.replace('_', ' ').lower())
+            general_report.append(message)
 
+    general_report.sort()
     r1 = '\n'.join(general_report) + '\n'
-    r2 = '\n'.join(detailed_report) + '\n'
+    r2 = '\n'.join(flatten(detailed_report)) + '\n'
 
     return df, r1, r2
     
-
 def sort_table(df):
     
     chrs = [str(item) for item in list(range(1,25))] + ['X', 'Y', 'M', 'MT']
@@ -569,7 +621,6 @@ def sort_table(df):
     df_sorted = df_sorted.drop(columns=[col_id])
     return df_sorted
     
-
 def  write_stats(fileout, df, num_cpus=0):
 
     print("[INFO]  Start writing fixed stats file to the file. This might take a few mins.")
@@ -606,7 +657,6 @@ def  write_stats(fileout, df, num_cpus=0):
             res_list = res.tolist()
             res_str = '\n'.join(res_list)
             out = fw.write(res_str.encode())
-
 
 def chunk_df_for_writing(df, line_numb=None, step=None):
     if step is None:

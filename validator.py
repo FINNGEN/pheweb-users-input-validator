@@ -30,11 +30,20 @@ def main():
     # analysis started
     start = datetime.now()
     ts = start.strftime("%d%m%YT%H%M")
-    
+
+    # initialize
+    meta_fixed_file = stats_fixed_file = stats_lines_with_errors = None
+    t_read = t_write = t_sort = ''
+    report_stats = report_stats_scan = report_meta = ''
+    tot_meta_checks = 4
+    tot_stats_checks = 8
+    sep_length = 90
+    space = 10
+
     # start the timer
     t1 = time.time()
-    mes_start = "\n%s\n" % (" SCAN STARTED AT: %s " % start).center(80, '=')
-    sep = "\n%s\n" % ('').center(80, '=')
+    mes_start = "\n%s\n" % (" SCAN STARTED AT: %s " % start).center(sep_length, '=')
+    sep = "\n%s\n" % ('').center(sep_length, '=')
     print(mes_start)
 
     # parse arguments and exit if none are provided
@@ -51,14 +60,7 @@ def main():
     fix = str2bool(args['fix'])
 
     # proceed with the scan
-    infomes="Arguments: \n\tDeep scan  - %s\n\tFix issues - %s" % (deep, fix)
-  
-    # initialize
-    meta_fixed_file = stats_fixed_file = stats_lines_with_errors = None
-    t_read = t_write = t_sort = ''
-    report_stats = report_stats_scan = report_meta = ''
-    tot_meta_checks = 4
-    tot_stats_checks = 15
+    infomes="\nArguments: \n\tDeep scan  - %s\n\tFix issues - %s" % (deep, fix)
 
     # check if provided input meta file exists
     if not os.path.exists(meta):
@@ -90,11 +92,13 @@ def main():
 
     # check stats
     print("[INFO]  Check stats file.")
-    try:
-        report_stats, report_stats_scan, t_read, t_write, \
+    report_stats, report_stats_scan, t_read, t_write, \
             t_sort, stats_fixed_file, stats_lines_with_errors = check_stats(stats, deep, fix, outdir)
-    except Exception as e:
-        print("Error occurred during processing of the stats file :: %s" % e)
+    # try:
+    #     report_stats, report_stats_scan, t_read, t_write, \
+    #         t_sort, stats_fixed_file, stats_lines_with_errors = check_stats(stats, deep, fix, outdir)
+    # except Exception as e:
+    #     print("Error occurred during processing of the stats file :: %s" % e)
     print("[INFO]  Stats file check completed.")
     
     # calculate totals:
@@ -102,27 +106,27 @@ def main():
     sstats = count(report_stats)
     meta_md5sum = get_md5sum(meta)
     stats_md5sum = get_md5sum(stats)
-
+     
     # stats table header
-    chl = max([len(os.path.basename(stats)) + 5, len(os.path.basename(meta)) + 5])
-    th = "FILENAME".ljust(chl) + "PASSED".ljust(10) + "FAILED".ljust(10) + \
-        "FIXED".ljust(10)+ "REMAINING".ljust(10) + "MD5SUM"
+    chl = max([len(os.path.basename(stats)) + 5, len(os.path.basename(meta)) + 5, len("Total successful scans:") + 5])
+    th = "FILENAME".ljust(chl) + "PASSED".ljust(space) + "FAILED".ljust(space) + \
+        "FIXED".ljust(space) + "MD5SUM"
     
     # totals for the meta
-    mcounts = [str(s).ljust(10) for s in [str(mstats[0])+'/'+str(tot_meta_checks), 
-        mstats[1], mstats[2], mstats[3], meta_md5sum]]
+    mcounts = [str(s).ljust(space) for s in [mstats[0], 
+        mstats[1], mstats[2], meta_md5sum]]
     mcounts = [os.path.basename(meta).ljust(chl)] + mcounts
 
     # totals for the stats
-    scounts = [str(s).ljust(10) for s in [str(sstats[0])+'/'+str(tot_stats_checks), 
-        sstats[1], sstats[2], sstats[3], stats_md5sum]]
+    scounts = [str(s).ljust(space) for s in [sstats[0], 
+        sstats[1], sstats[2], stats_md5sum]]
     scounts = [os.path.basename(stats).ljust(chl)] + scounts
 
-    # combined
-    combined = ["Total".ljust(chl)] + [str(s).ljust(10) for s in 
-            [str(sstats[0]+mstats[0])+'/'+str(tot_stats_checks+tot_meta_checks), 
-             sstats[1]+mstats[1], sstats[2]+mstats[2], sstats[3]+mstats[3], "-"]]
-    tot_stats = '\n'.join([th, ''.join(mcounts), ''.join(scounts), ''.join(combined)])
+    # total
+    tot_success = mstats[0] + mstats[2] + sstats[0] + sstats[2]
+    tot_success_mes = "%s%s / %s" % ("Total successful scans:".ljust(chl), tot_success, tot_meta_checks + tot_stats_checks) 
+    table_border = "%s" % ('').center(len(tot_success_mes), '-')
+    tot_stats = '\n'.join([th, ''.join(mcounts), ''.join(scounts)])
 
     # save report
     fout = os.path.join(outdir, "report.log")
@@ -143,15 +147,17 @@ def main():
     exec_time = "Read stats file %s\nWrite stats file %s\nSort stats file %s\nTotal %s\n" % \
         (t_read.lower(), t_write.lower(), t_sort.lower(), t_total.lower())
     report = "\n".join([mes_start, report_meta, report_stats, sep,
-        tot_stats, mes_input, mes_output, '\n', infomes, report_stats_scan, sep, mes_end, exec_time])
+        tot_stats, table_border, tot_success_mes, sep, mes_input, mes_output, infomes, 
+        report_stats_scan, sep, mes_end, exec_time])
     
     # save files
     with open(fout, 'w') as f:
         f.write(report)
 
     # print on the screen
-    print('\n'.join([sep, tot_stats, sep, mes_input, mes_output, mes_end, exec_time]))
-
+    print('\n'.join([sep, tot_stats, table_border, tot_success_mes, 
+                    sep, mes_input, mes_output, mes_end, exec_time]))
+    
 
 def get_md5sum(filename):
     output = subprocess.check_output("md5sum %s" % filename, 
