@@ -5,7 +5,7 @@ Python tool for validating users input files for uploading to the pheweb browser
 + Metadata file in JSON format 
 + Statistics file
 
-There are **two modes** for scanning your stats file: deep and shallow (specified by setting the parameter "--deep true/false", see user manual below). With the deep mode the whole file is scanned while with the shallow mode ~80k lines are subsampled from the stats file and subjected to the scan. 
+There are two modes for scanning your stats file: deep and shallow (specified by setting the parameter "--deep true/false", see user manual below). With the deep mode the whole file is scanned while with the shallow mode ~80k lines are subsampled from the stats file and subjected to the scan. 
 
 Also, a user can enable fixing mode (by setting the parameter "--fix true", see user manual below) in order to fix issues found by the validator. See section "Scans and fixes performed by the validator" for more details on the checks performed by the validator and what issues can be fixed automatically.
 
@@ -24,7 +24,7 @@ Expected runtimes:
 
 ## Scans and fixes performed by the validator
 
-The following scans are executed by the validator:
+The following scans are executed by the validator.
 
 METADATA:
 1. Check for special characters in metadata.
