@@ -129,7 +129,7 @@ def main():
     tot_stats = '\n'.join([th, ''.join(mcounts), ''.join(scounts)])
 
     # save report
-    fout = os.path.join(outdir, "report.log")
+    fout = os.path.join(outdir, "report.txt")
 
     # stop the timer
     end = datetime.now()

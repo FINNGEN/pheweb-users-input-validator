@@ -584,11 +584,12 @@ def create_report_and_fix(df, report, fix):
     if len(set(cols_order).difference(set(df.columns))) == 0:
         if fix:
             df = df[cols_order]
-            message = "[FIXED] Columns order fixed."
+            message = "[FIXED] Fixed columns order/number in the stats file."
         else:
-            message = "[FAIL]  Columns order fixed."
+            message = "[FAIL]  Wrong columns order or columns number: check that your stats file contains 11 columns " + \
+                      "        as described in the FinnGen Analyst Handbook."
     else:
-        message = "[PASS]  Correct columns order in the stats file."
+        message = "[PASS]  Correct columns order/number in the stats file."
     general_report.append(message)
     
     # add other errors

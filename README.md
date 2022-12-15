@@ -9,7 +9,7 @@ There are two modes for scanning your stats file: deep and shallow (specified by
 
 Also, a user can enable fixing mode (by setting the parameter "--fix true", see user manual below) in order to fix issues found by the validator. See section "Scans and fixes performed by the validator" for more details on the checks performed by the validator and what issues can be fixed automatically.
 
-Prepare your files according to the instruction given in the [FinnGen Analyst Handbook](https://finngen.gitbook.io/finngen-analyst-handbook/working-in-the-sandbox/which-tools-are-available/untitled/how-to-set-up-a-pheweb-browser-for-summary-statistics). 
+Prepare your files according to the instruction given in the [FinnGen Analyst Handbook](https://finngen.gitbook.io/finngen-analyst-handbook/working-in-the-sandbox/which-tools-are-available/untitled/how-to-set-up-a-pheweb-browser-for-summary-statistics). Navigate to the section as follows: open "Working in the Sandbox", navigate to "Which tools are available" -> "Custom GWAS tools" -> "How to set up a pheweb browser for summary statistics". 
 
 **Recommendation**: first run validator in a shallow mode to check whether your metadata is correctly formatted and check if some basic requirements for the stats file are met. Once that is checked - proceed to the deep check of the files: you can either enable fixing straight away (by adding --fix true) or without it. Note that running **fix** mode might take a long time (more than 20 minutes) if your file is large and it requires sorting. 
 

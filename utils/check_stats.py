@@ -790,11 +790,12 @@ def create_report(report, summary):
 
     # columns order
     if summary['fixed']['cols_order']  > 0:
-        message = "[FIXED] Columns order fixed."
+        message = "[FIXED] Fixed columns order/number in the stats file."
     elif summary['fail']['cols_order'] > 0:
-        message = "[FAIL]  Columns order failed."
+        message = "[FAIL]  Wrong columns order or columns number: check that your stats file contains 11 columns " + \
+                  "        as described in the FinnGen Analyst Handbook."
     else:
-        message = "[PASS]  Correct columns order in the stats file."
+        message = "[PASS]  Correct columns order/number in the stats file."
     general_report.append(message)
 
     # add other errors
