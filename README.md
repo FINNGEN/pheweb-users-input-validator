@@ -37,24 +37,28 @@ STATS:
 2. Check that file is tab delimited.
 3. Check that columns order is correct.
 4. Ceck that file doesn't contain special characters.
-5. Check that chromosome column ("#chrom") has correct formatting.
+5. Check that chromosome column ("#chrom") has correct formatting, i.e. contains values 1-24, X, Y, M, MT.
 6. Check that columns 7-11 (beta, sebeta, af_alt, af_alt_cases, af_alt_controls) don't contain missing values.
-7. Check that columns 2-11 have correct formatting.
+7. Check that columns 2-11 have correct formatting, i.e. according to the description in FinnGen Analyst Handbook.
 8. Check that stats file doesn't contain unsorted positions.
 
 
 The following fixes can be done by the validator **when possible**:
 - Remove special characters from the metadata file.
 - Remove special characters from the stats file.
-- Fix missing values in the colums 7-11.
-- Remove chromosome prefix, e.g. "chrN" change to "N".
+- If stats file is space/comma delimited, it will be fixed to be tab-delimited.
+- If stats file contains missing values in the colums 7-11, they will be substituted with value 0.5.
+- Remove chromosome prefix, e.g. "chr1" change to "1" if the chromosome column contains that.
 - Sort stats file if unsorted positions are found.
-- Fix column order.
+- Fix column order/number to contain 11 columns as described in the FinnGen Analyst Handbook.
 
-What is not fixed in the stats file:
-- Incorrect values in the columns, for instance negative p-values
-- Naming of the stats file in te metadata json file
+What is not fixed in the stats file, examples:
+- Incorrect values in the columns, for instance negative p-values.
+- Naming of the stats file in te metadata json file.
+- Some special characters that cannot be recognised by the validator.
 
+
+Note that for the stats file validator will report the first 50 issues in each of the following section: special characters, invalid formatting, missing values.
 
 ## Requirements
 
