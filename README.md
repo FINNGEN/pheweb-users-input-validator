@@ -1,17 +1,44 @@
 # PHEWEB USERS INPUTS VALIDATOR
 
 ## Overview
-Python tool for validating users input files for uploading to the pheweb browser. User needs to provide:
-+ Metadata file in JSON format 
-+ Statistics file
 
-There are two modes for scanning your stats file: deep and shallow (specified by setting the parameter "--deep true/false", see user manual below). With the deep mode the whole file is scanned while with the shallow mode ~80k lines are subsampled from the stats file and subjected to the scan. 
+The PheWeb users input validation tool is used to validate the correct format of user-formatted input files to make custom GWAS summary stats viewable in a PheWeb-style. User needs to provide two files: metadata file in JSON format (1) and statistics file (2). Prepare your files according to the instruction given in the [FinnGen Analyst Handbook](https://finngen.gitbook.io/finngen-analyst-handbook/working-in-the-sandbox/which-tools-are-available/untitled/how-to-set-up-a-pheweb-browser-for-summary-statistics). Navigate to the section in the FinnGen Analyst Handbook as follows: open "Working in the Sandbox", navigate to "Which tools are available" -> "Custom GWAS tools" -> "How to set up a pheweb browser for summary statistics". 
 
-Also, a user can enable fixing mode (by setting the parameter "--fix true", see user manual below) in order to fix issues found by the validator. See section "Scans and fixes performed by the validator" for more details on the checks performed by the validator and what issues can be fixed automatically.
+There are two modes for scanning your stats file: deep and shallow (specified by the parameter "--deep true/false", see user manual below). With the deep mode the whole stats file is scanned while with the shallow mode ~80k lines are subsampled from the stats file and subjected to the scan. Otherwise, scanning for the same issues is performed in either of the modes. **Recommendation**: first run validator in a shallow mode to check whether your metadata is correctly formatted and check if some basic requirements for the stats file are met. Once that is checked - proceed to the deep check of the files: you can either enable fixing straight away (by adding --fix true) or without it. Note that running **fix** mode might take a long time (more than 20 minutes) if your file is large and it requires sorting. 
 
-Prepare your files according to the instruction given in the [FinnGen Analyst Handbook](https://finngen.gitbook.io/finngen-analyst-handbook/working-in-the-sandbox/which-tools-are-available/untitled/how-to-set-up-a-pheweb-browser-for-summary-statistics). Navigate to the section as follows: open "Working in the Sandbox", navigate to "Which tools are available" -> "Custom GWAS tools" -> "How to set up a pheweb browser for summary statistics". 
+The following scans are performed by the PheWeb users inputs validator tool.
 
-**Recommendation**: first run validator in a shallow mode to check whether your metadata is correctly formatted and check if some basic requirements for the stats file are met. Once that is checked - proceed to the deep check of the files: you can either enable fixing straight away (by adding --fix true) or without it. Note that running **fix** mode might take a long time (more than 20 minutes) if your file is large and it requires sorting. 
+Metadata file:
+1. Check for special characters in metadata.
+2. Check that metadata contains all required fields.
+3. Check that metadata fields have correct format.
+4. Check that metadata field "name" matches stats filename. 
+
+Stats file:
+1. Check that file is compressed.
+2. Check that file is tab delimited.
+3. Check that columns order is correct.
+4. Check that file doesn't contain special characters.
+5. Check that chromosome column has correct formatting, i.e. only contains values 1-24, X, Y, M, MT.
+6. Check that columns 7-11 (beta, sebeta, af_alt, af_alt_cases, af_alt_controls) don't contain missing values.
+7. Check that columns 2-11 have correct formatting, i.e. according to the instructions in the FinnGen Analyst Handbook.
+8. Check that stats file doesn't contain unsorted positions.
+
+
+In addition, a user can enable automated fixing of issues detected by the validator in the user-specified files by setting the parameter "--fix true" (see the user manual below). The following fixes can be done by the validator when possible:
+
+- Remove special characters from the metadata file.
+- Remove special characters from the stats file.
+- If stats file is space/comma delimited, it will be fixed to be tab-delimited.
+- If stats file contains missing values in the colums 7-11, they will be substituted with value 0.5.
+- Remove chromosome prefix, e.g. "chr1" change to "1" if the chromosome column contains that.
+- Sort stats file if unsorted positions are found.
+- Fix column order/number to contain 11 columns as described in the instructions.
+
+Examples of what cannot be fixed by the validator tool:
+- Incorrect values in the columns, for instance negative p-values.
+- Name of the stats file specified in the "name" field of the metadata json file.
+- Some special characters that cannot be recognised by the validator.
 
 
 ## Resources and expected runtimes
@@ -21,44 +48,6 @@ Expected runtimes:
 + Shallow scan: less than a minute
 + Deep scan: 700MB file is scanned, fixed and written in ~10-20 mins depending on the available resources.
 
-
-## Scans and fixes performed by the validator
-
-The following scans are executed by the validator.
-
-METADATA:
-1. Check for special characters in metadata.
-2. Check that metadata contains all required fields.
-3. Check that metadata fields have correct format.
-4. Check that metadata field "name" matches stats filename. 
-
-STATS:
-1. Check that file is compressed.
-2. Check that file is tab delimited.
-3. Check that columns order is correct.
-4. Ceck that file doesn't contain special characters.
-5. Check that chromosome column ("#chrom") has correct formatting, i.e. contains values 1-24, X, Y, M, MT.
-6. Check that columns 7-11 (beta, sebeta, af_alt, af_alt_cases, af_alt_controls) don't contain missing values.
-7. Check that columns 2-11 have correct formatting, i.e. according to the description in FinnGen Analyst Handbook.
-8. Check that stats file doesn't contain unsorted positions.
-
-
-The following fixes can be done by the validator **when possible**:
-- Remove special characters from the metadata file.
-- Remove special characters from the stats file.
-- If stats file is space/comma delimited, it will be fixed to be tab-delimited.
-- If stats file contains missing values in the colums 7-11, they will be substituted with value 0.5.
-- Remove chromosome prefix, e.g. "chr1" change to "1" if the chromosome column contains that.
-- Sort stats file if unsorted positions are found.
-- Fix column order/number to contain 11 columns as described in the FinnGen Analyst Handbook.
-
-What is not fixed in the stats file, examples:
-- Incorrect values in the columns, for instance negative p-values.
-- Naming of the stats file in te metadata json file.
-- Some special characters that cannot be recognised by the validator.
-
-
-Note that for the stats file validator will report the first 50 issues in each of the following section: special characters, invalid formatting, missing values.
 
 ## Requirements
 
@@ -84,10 +73,10 @@ Input arguments:
 
 ## Outputs of the validator.py
 
-Output files:
-1. Full report on the results of validator scanning will be saved in file <DIR_OUT>/scan<SCAN_TIMESTAMP>/report.log.
-2. If fix mode is activated and some issues were fixed by the validator, a new stats file is written in <DIR_OUT>/scan<SCAN_TIMESTAMP>/<STATS_FILENAME>.
-3. Lines from stats file in which validator was able to detect issues are saved in  <DIR_OUT>/scan<SCAN_TIMESTAMP>/<STATS_FILENAME>_lines_with_errors.
+Output files generated by the PheWeb users inputs validator tool:
+1. Full report on the results of validator scanning will be saved in file <DIR_OUT>/scan<SCAN_TIMESTAMP>/report.txt.
+2. (Optional) If the fixing mode is activated and some issues were fixed by the validator, a new stats file is written to <DIR_OUT>/scan<SCAN_TIMESTAMP>/<STATS_FILENAME>.
+3. (Optional) Lines from the stats file in which validator was able to detect issues are saved in the file <DIR_OUT>/scan<SCAN_TIMESTAMP>/<STATS_FILENAME>_lines_with_errors.
 
 ## Example
 
