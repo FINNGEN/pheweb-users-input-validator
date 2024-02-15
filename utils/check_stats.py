@@ -139,14 +139,14 @@ def check_stats(filename, deep, fix, outdir):
         fout = os.path.join(outdir, os.path.basename(filename))
         fout = fout + '.CHUNK.gz' if not deep else fout
         if fix and summary['fixed'].sum() > 0:
-            print("[INFO]  Some fixes were made - writing fixed stats file. Check details in the final report.")
+            print("[WARN]  Some fixes were made in the stats file. Check details in the final report.")
             write_stats(fout, data_fixed, num_cpus=0)    
             fout_path = os.path.abspath(fout)
         else:
             print('[INFO]  No errors or fixes found in stats file.')
             fout_path = None
     except Exception as e:
-        print("Error occurred while writing output file :: %s. Skip fixing." % e)
+        print("[ERROR]  Error occurred while writing output file :: %s. Skip fixing." % e)
     
     t2 = time.time()
     t_write = timing(t1, t2)
@@ -615,12 +615,27 @@ def chunk_fix(report, df, fix):
 
     # reorder the cols
     cols = ["#chrom", "pos", "ref", "alt", "pval", "mlogp", "beta", "sebeta", "af_alt", "af_alt_cases", "af_alt_controls"]
-    if len(set(cols).difference(set(df.columns))) == 0:
-        if fix:
-            df = df[cols]
-            fixes['cols_order'] = ['fixed']
+
+    # if not all required colums are in the table or order is wrong
+    if list(df.columns) != cols:
+        
+        # if all required columns are in the table but in the wrong order or there are some extra columns
+        if len(set(cols).difference(set(df.columns))) == 0:
+
+            # if can be re-ordered and selected, do it 
+            if fix:
+                df = df[cols]
+                fixes['cols_order'] = ['fixed']
+            
+            # otherwise, fail
+            else:
+                fixes['cols_order'] = ['fail']
+        
+        # NOT all required columns are in the table
         else:
             fixes['cols_order'] = ['fail']
+
+    # if all required colums are in the table AND order is right
     else:
         fixes['cols_order'] = ['pass']
 
@@ -656,7 +671,7 @@ def write_stats(fileout, df_lst, num_cpus=0):
             # append the last EOL symbol at the end of the text
             if i < len(df_lst):
                 res_str = res_str + '\n'
-            out = fw.write(res_str.encode())
+            _ = fw.write(res_str.encode())
 
 def summarize(res):
     summary = {}
@@ -792,7 +807,7 @@ def create_report(report, summary):
     if summary['fixed']['cols_order']  > 0:
         message = "[FIXED] Fixed columns order/number in the stats file."
     elif summary['fail']['cols_order'] > 0:
-        message = "[FAIL]  Wrong columns order or columns number: check that your stats file contains 11 columns " + \
+        message = "[FAIL]  Wrong columns order or columns number: check that your stats file contains exacly 11 required columns\n " + \
                   "        as described in the FinnGen Analyst Handbook."
     else:
         message = "[PASS]  Correct columns order/number in the stats file."

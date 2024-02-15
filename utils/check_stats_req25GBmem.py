@@ -108,24 +108,34 @@ def check_stats(filename, deep, fix, outdir):
 
     # create report and fix if needed
     data_fixed, r1, r2 = create_report_and_fix(data, report, fix) 
-
-    w = len(re.findall("FAIL", r1)) + len(re.findall("FIXED", r1))
+    failed_n = len(re.findall("FAIL", r1))
+    fixed_n = len(re.findall("FIXED", r1))
 
     # write result file
     t1 = time.time()
     try:
+
         # save fixed file to the output folder
         fout = os.path.join(outdir, os.path.basename(filename))
         if not deep:
             fout = fout + '.CHUNK.gz'
+        if failed_n > 0:
+            print("[WARN]  Found errors in the stats file. Check details in the final report.")
+        else:
+            print("[INFO]  Found NO errors in the stats file.")
+
         # write file
-        if fix and w > 0:
-            print("[INFO]  Some fixes were made - writing fixed stats file. Check details in the final report.")
+        if fix and fixed_n:
+            print("[WARN]  Fixed some errors in the stats file. Check details in the final report.")
             write_stats(fout, data_fixed, num_cpus=0)    
             fout = os.path.abspath(fout)
         else:
-            print('[INFO]  No errors or fixes found in stats file.')
+            print("[INFO]  No fixed were made to the stats file.")
+        
+        if fixed_n == 0 and failed_n == 0:
+            print('[INFO]  No errors found in the stats file.')
             fout = None
+
     except Exception as e:
         print("Error occurred while writing output file :: %s. Skip fixing." % e)
     
@@ -355,13 +365,11 @@ def scan_sorted(df):
     chr_numbers = pd.DataFrame(d)
     chr_numbers.index = chr_numbers['chrs']
     
-    # append the  numeric chr column and sort by it and pos
-    col_id = df.shape[1]
+    # append the numeric chr column and sort by it and pos    
     df_sorted = df.copy()
-    df_sorted[col_id] = list(chr_numbers.loc[df_sorted.iloc[:, 0]]['chr_numb'])
-    df_sorted = df_sorted.sort_values([col_id, df_sorted.columns[1]], 
-        ascending = [True, True])
-
+    df_sorted['chr_numb'] = list(chr_numbers.loc[df_sorted.iloc[:, 0]]['chr_numb'])
+    df_sorted = df_sorted.sort_values(by=['chr_numb', 'pos'], ascending = [True, True])
+    
     # prepare summary
     summary = []
     if not all(df.index == df_sorted.index):
@@ -375,8 +383,8 @@ def scan_sorted(df):
                    'pandas_row_id': [first_unsorted],
                    'invalid_entry': None}
 
-    return df_sorted, summary
-
+    return df_sorted[list(df.columns)], summary
+    
 def get_invalid(df, colname, func):
     ids = list(df.loc[df.loc[:, colname].apply(func)].index)
     entries = list(df.loc[ids, colname])
@@ -460,7 +468,7 @@ def create_report_and_fix(df, report, fix):
     detailed_report = []
     cols_order = ["#chrom", "pos", "ref", "alt", "pval", "mlogp", "beta", 
                   "sebeta", "af_alt", "af_alt_cases", "af_alt_controls"]
-
+    
     # special characters
     key = 'SPECIAL_CHARACTERS'
     if key in list(report.keys()):
@@ -532,7 +540,7 @@ def create_report_and_fix(df, report, fix):
 
             # remove from processed keys
             report_issues_all.remove(key)
-
+    
     # invalid entries in columns
     if len(invalid_entries_keys) > 0:
         message = "[FAIL]  Invalid entries found in the columns of the stats file.\n" + \
@@ -565,6 +573,7 @@ def create_report_and_fix(df, report, fix):
     # check if data is sorted
     if check_sort:
         df, summary = scan_sorted(df)
+
         if len(summary) > 0:
             print("[WARN]  Unsorted positions were found in the data.")
             if fix:
@@ -579,17 +588,32 @@ def create_report_and_fix(df, report, fix):
         message = "[FAIL]  Unsorted positions were found in the data. " + \
             "\nValidator wasn't able to fix this problem due to invalid positions in the #chrom column."
     general_report.append(message)
+    
+    # if not all required colums are in the table or order is wrong
+    if list(df.columns) != cols_order:
 
-    # reorder the cols
-    if len(set(cols_order).difference(set(df.columns))) == 0:
-        if fix:
-            df = df[cols_order]
-            message = "[FIXED] Fixed columns order/number in the stats file."
-        else:
-            message = "[FAIL]  Wrong columns order or columns number: check that your stats file contains 11 columns " + \
+        # if all required columns are in the table but in the wrong order or there are some extra columns
+        if len(set(cols_order).difference(set(df.columns))) == 0:
+
+            # if can be re-ordered and selected, do it 
+            if fix:
+                df = df[cols_order]
+                message = "[FIXED] Fixed columns order/number in the stats file."
+            
+            # otherwise, fail
+            else:
+                message = "[FAIL]  Wrong columns order or columns number: check that your stats file contains exacly 11 required columns " + \
                       "        as described in the FinnGen Analyst Handbook."
+        
+        # NOT all required columns are in the table
+        else:
+            message = "[FAIL]  Not all required columns are in the table: check that your stats file contains exacly 11 required columns " + \
+                      "        as described in the FinnGen Analyst Handbook."
+
+    # if all required colums are in the table AND order is right
     else:
         message = "[PASS]  Correct columns order/number in the stats file."
+
     general_report.append(message)
     
     # add other errors
