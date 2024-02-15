@@ -104,6 +104,7 @@ def check_meta(meta_filename, stats_filename, outdir, fix):
 
     # save the mdata
     if fix and w > 0:
+        print("[WARN]  Some fixes were made in the metadata file. Check details in the final report.")
         report_dict['special_chars'] = re.sub('FAIL\]\ ', 'FIXED]', report_dict['special_chars'])
         fout = os.path.join(outdir, os.path.basename(meta_filename))
         fout = os.path.abspath(fout)

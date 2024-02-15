@@ -6,6 +6,7 @@ import re
 import sys
 import time
 import argparse
+import hashlib
 import subprocess
 from datetime import datetime
 from utils.check_meta import check_meta
@@ -158,12 +159,8 @@ def main():
                     mes_output, mes_end, exec_time]))
 
 
-
 def get_md5sum(filename):
-    output = subprocess.check_output("md5sum %s" % filename, 
-        shell=True, executable='/bin/bash')
-    md5sum = output.decode().split(' ')[0]
-    return md5sum
+    return hashlib.md5(open(filename,'rb').read()).hexdigest()
 
 
 def count(report):
